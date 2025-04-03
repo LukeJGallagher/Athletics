@@ -1,0 +1,7 @@
+openai
+pandas
+sqlite3  # optional; built-in for most
+streamlit
+numpy
+altair
+

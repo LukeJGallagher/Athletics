@@ -10,7 +10,7 @@ import datetime
 import openai
 import streamlit as st
 
-openai.api_key = st.secrets["OPENAI_API_KEY"]
+
 
 
 ##########################################################
@@ -159,7 +159,7 @@ st.set_page_config(
 ###################################
 # 2) Dark Background
 ###################################
-import streamlit as st
+
 
 # Set background from GitHub-hosted image
 def set_background_from_url(url):
@@ -332,6 +332,43 @@ def load_db(db_filename: str):
     if 'Year' not in df.columns and 'Start_Date' in df.columns:
         df['Year'] = df['Start_Date'].dt.year
     return df
+
+ # Set up OpenAI API
+openai.api_key = st.secrets["OPENAI_API_KEY"]
+
+# Title and Tabs
+st.set_page_config(page_title="Athletics Analysis Dashboard", layout="wide")
+st.title("🏃 Athletics Analysis Dashboard")
+tabs = st.tabs([
+    "Athlete Profiles (Saudi DB)",
+    "Athlete Profiles (Major DB)",
+    "Major Championships: Qualification vs Final",
+    "Chatbot Assistant"
+])
+
+# Load data
+@st.cache_data
+def load_saudi_db():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    db_path = os.path.join(base_dir, "SQL", "saudi_athletes.db")
+    if not os.path.exists(db_path):
+        return pd.DataFrame()
+    conn = sqlite3.connect(db_path)
+    df = pd.read_sql_query("SELECT * FROM athletics_data", conn)
+    conn.close()
+    return df
+
+@st.cache_data
+def load_major_db():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    db_path = os.path.join(base_dir, "SQL", "major_championships.db")
+    if not os.path.exists(db_path):
+        return pd.DataFrame()
+    conn = sqlite3.connect(db_path)
+    df = pd.read_sql_query("SELECT * FROM athletics_data", conn)
+    conn.close()
+    return df
+
 
 ###################################
 # 6) Athlete Expansions
@@ -925,41 +962,59 @@ def main():
                     show_qualification_stage(df_maj)
                 with sub_tabs[1]:
                     show_final_performances(df_maj)
-    # Tab 3 – Chatbot
+   
+
+# Chatbot Tab (Integrated)
     with tabs[3]:
-        st.title("💬 Athletics Chatbot")
+        st.header("🧠 AI Chatbot Assistant")
 
-        # Load database
-        df_chatbot = load_db("major_championships.db")  # or "saudi_athletes.db" depending on use
+    sub_tab = st.radio("Choose a database:", ["Saudi DB", "Major DB"])
 
-        # Convert data to string for context (consider limiting rows for performance)
-        context = df_chatbot.head(100).to_csv(index=False) if not df_chatbot.empty else "No data available."
+    if sub_tab == "Saudi DB":
+        df = load_saudi_db()
+    else:
+        df = load_major_db()
 
-        user_input = st.text_input("Ask a question about the data:")
+    if df.empty:
+        st.warning("No data loaded.")
+    else:
+        question = st.chat_input(f"Ask a question about {sub_tab} data:", key="chat_input")
 
-        if user_input:
+        if question:
+            st.chat_message("user").write(question)
+            sample_data = df.head(20).to_csv(index=False)
+            prompt = f"""
+You are a helpful assistant for athletics performance analysis.
+The user is analyzing {sub_tab}.
+They asked: {question}
+Here is a sample of the data:
+
+{sample_data}
+
+Provide a concise and helpful response. Include performance insights or trends if applicable.
+"""
             with st.spinner("Thinking..."):
-                prompt = f"""
-                You are an athletics performance data assistant.
-                The user has access to the following dataset (top 100 rows shown below):
+                response = openai.ChatCompletion.create(
+                    model="gpt-4",
+                    messages=[
+                        {"role": "system", "content": "You are a sports performance data assistant."},
+                        {"role": "user", "content": prompt}
+                    ]
+                )
+                answer = response.choices[0].message.content
+                st.chat_message("assistant").write(answer)
 
-                {context}
-
-                Based on that, answer this question in a concise and clear way:
-                {user_input}
-                """
-
-                try:
-                    response = openai.ChatCompletion.create(
-                        model="gpt-4",
-                        messages=[{"role": "user", "content": prompt}],
-                        temperature=0.3,
-                    )
-                    st.success(response.choices[0].message.content.strip())
-                except Exception as e:
-                    st.error(f"Error: {e}")
-
-
+                st.markdown("---")
+                st.markdown("### Performance Chart Preview")
+                if "Event" in df.columns and "Result" in df.columns:
+                    chart_data = df.dropna(subset=["Event", "Result"]).copy()
+                    chart_data = chart_data.groupby("Event", as_index=False).size().rename(columns={"size": "Count"})
+                    chart = alt.Chart(chart_data).mark_bar().encode(
+                        x=alt.X("Event:N", sort="-y"),
+                        y="Count:Q",
+                        tooltip=["Event", "Count"]
+                    ).properties(height=300)
+                    st.altair_chart(chart, use_container_width=True)
 
 
 if __name__ == "__main__":
