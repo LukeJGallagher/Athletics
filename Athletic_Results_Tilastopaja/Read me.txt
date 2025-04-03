@@ -1,0 +1,20 @@
+Read me
+Create csv database for all athletes using https://athletics-results.streamlit.app/
+Extract years into parquet files in Data folder 
+            *** Check they saved in Data/****eg men or women and in correct folder
+Use DatabaseSQL2.py to merge all parquet files into athletics.db
+Copy new athletics.db into SQL folder             
+Use SQL Converters to reduce file size and filter into SQL folder 
+
+Database_Saudi_SQL2.py
+Database_Major_Champs2.py 
+Note: Neet to update Major2 championship dictionary
+# Dictionary mapping competition names to their Competition_IDs
+competition_cids = {
+    "Olympics 2021": "12992925",
+    "Olympics 2016": "12877460",
+    "Olympics 2012": "12825110",
+    "Olympics 2008": "12042259",
+    "Olympics 2004": "8232064",
+Streamlit run to check athletics_app_Deploy.y
+Then copy to athletics_app_Deploy.py and put in Github folder to deploy         
