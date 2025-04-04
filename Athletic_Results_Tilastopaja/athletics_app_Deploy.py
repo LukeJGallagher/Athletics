@@ -350,7 +350,7 @@ def show_single_athlete_profile(profile, db_label):
     grouped = profile.copy()
     if 'Start_Date' in grouped.columns:
         grouped['Year'] = grouped['Start_Date'].dt.year.astype('Int64')
-    if pd.notna(dob) and 'Start_Date' in grouped.columns:
+    if dob is not None and pd.notnull(dob) and 'Start_Date' in grouped.columns:
         grouped['Age'] = ((grouped['Start_Date'] - dob).dt.days / 365.25).astype(int)
     else:
         grouped['Age'] = np.nan
@@ -367,7 +367,7 @@ def show_single_athlete_profile(profile, db_label):
         with col1:
             st.markdown(f"**Name:** {name}")
             st.markdown(f"**Country:** {country}")
-            if pd.notna(dob):
+            if dob is not None and pd.notnull(dob):
                 st.markdown(f"**Date of Birth:** {dob.strftime('%Y-%m-%d')}")
             else:
                 st.markdown("**Date of Birth:** N/A")
@@ -409,37 +409,40 @@ def show_single_athlete_profile(profile, db_label):
                 lower = q1 - 1.5 * iqr
                 upper = q3 + 1.5 * iqr
                 sub_ev_filtered = sub_ev[(sub_ev['Result_numeric'] >= lower) & (sub_ev['Result_numeric'] <= upper)]
-                y_min = sub_ev_filtered['Result_numeric'].min()
-                y_max = sub_ev_filtered['Result_numeric'].max()
-                y_pad = (y_max - y_min) * 0.1 if y_max > y_min else 1
-                y_axis = alt.Y('Result_numeric:Q', title='Performance', scale=alt.Scale(domain=[y_min - y_pad, y_max + y_pad]))
-                chart = alt.Chart(sub_ev_filtered).mark_line(
-                    interpolate='monotone',
-                    point=alt.OverlayMarkDef(filled=True, size=60)
-                ).encode(
-                    x=alt.X('Start_Date:T', title='Date'),
-                    y=y_axis,
-                    tooltip=['Start_Date:T', 'Event', 'Result', 'Competition', 'Round', 'Position', 'Age'],
-                    color=alt.value('#00FF7F')
-                ).properties(
-                    title=f"{ev_} Progression",
-                    width=800,
-                    height=300
-                ).configure_axis(
-                    labelColor='white',
-                    titleColor='white',
-                    labelFontSize=12,
-                    titleFontSize=14,
-                    gridColor='gray',
-                    domainColor='white'
-                ).configure_view(
-                    strokeWidth=0,
-                    fill='black'
-                ).configure_title(
-                    color='white',
-                    fontSize=16
-                )
-                st.altair_chart(chart, use_container_width=True)
+                if sub_ev_filtered['Result_numeric'].notna().sum() >= 2:
+                    y_min = sub_ev_filtered['Result_numeric'].min()
+                    y_max = sub_ev_filtered['Result_numeric'].max()
+                    y_pad = (y_max - y_min) * 0.1 if y_max > y_min else 1
+                    y_axis = alt.Y('Result_numeric:Q', title='Performance', scale=alt.Scale(domain=[y_min - y_pad, y_max + y_pad]))
+                    chart = alt.Chart(sub_ev_filtered).mark_line(
+                        interpolate='monotone',
+                        point=alt.OverlayMarkDef(filled=True, size=60)
+                    ).encode(
+                        x=alt.X('Start_Date:T', title='Date'),
+                        y=y_axis,
+                        tooltip=['Start_Date:T', 'Event', 'Result', 'Competition', 'Round', 'Position', 'Age'],
+                        color=alt.value('#00FF7F')
+                    ).properties(
+                        title=f"{ev_} Progression",
+                        width=800,
+                        height=300
+                    ).configure_axis(
+                        labelColor='white',
+                        titleColor='white',
+                        labelFontSize=12,
+                        titleFontSize=14,
+                        gridColor='gray',
+                        domainColor='white'
+                    ).configure_view(
+                        strokeWidth=0,
+                        fill='black'
+                    ).configure_title(
+                        color='white',
+                        fontSize=16
+                    )
+                    st.altair_chart(chart, use_container_width=True)
+                else:
+                    st.info(f"📬 Not enough valid data to chart **{ev_}**.")
 
 
         st.markdown("### 🗕️ Current Season Results")
