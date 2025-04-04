@@ -332,7 +332,7 @@ def load_db(db_filename: str):
 # 6) Athlete Expansions
 ###################################
 def show_single_athlete_profile(profile, db_label):
-    name = profile['Athlete_Name'].iloc[0] if 'Athlete_Name' in profile.columns else "Unknown"
+    name = profile['Athlete_Name'].iloc[0] if 'Athlete_Name' in profile.columns and pd.notnull(profile['Athlete_Name'].iloc[0]) else "Relay Team"
     country = profile['Athlete_Country'].iloc[0] if 'Athlete_Country' in profile.columns else "N/A"
     dob = profile['Date_of_Birth'].iloc[0] if 'Date_of_Birth' in profile.columns else None
 
@@ -410,11 +410,15 @@ def show_single_athlete_profile(profile, db_label):
                 upper = q3 + 1.5 * iqr
                 sub_ev_filtered = sub_ev[(sub_ev['Result_numeric'] >= lower) & (sub_ev['Result_numeric'] <= upper)]
 
+                if sub_ev_filtered['Result_numeric'].isna().all():
+                    st.info(f"📬 No valid performance data for **{ev_}**, skipping chart.")
+                    continue
+
                 y_min = sub_ev_filtered['Result_numeric'].min()
                 y_max = sub_ev_filtered['Result_numeric'].max()
 
-                if not np.isfinite(y_min) or not np.isfinite(y_max):
-                    st.warning(f"❌ Skipping chart for {ev_} due to invalid result values.")
+                if pd.isna(y_min) or pd.isna(y_max) or not np.isfinite(y_min) or not np.isfinite(y_max):
+                    st.warning(f"❌ Skipping chart for **{ev_}** due to non-numeric results.")
                     continue
 
                 if sub_ev_filtered['Result_numeric'].notna().sum() >= 2:
