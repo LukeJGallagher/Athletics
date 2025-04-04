@@ -323,22 +323,20 @@ def load_db(db_filename: str):
         df['Year'] = df['Start_Date'].dt.year
     return df
 
-###################################
-# 6) Athlete Expansions
-###################################
+
 ###################################
 # 6) Athlete Expansions
 ###################################
 def show_single_athlete_profile(profile, db_label):
     grouped = profile.copy()
-
-    # If event is a relay and Athlete_Name is blank, fill it with Athlete_Country.
+    
+    # For specific relay events, if Athlete_Name is blank, fill it with Athlete_Country.
     relay_events = ['4x100m Relay', '4x400m Relay', '4x400m Mixed Relay']
     if 'Event' in grouped.columns and 'Athlete_Name' in grouped.columns and 'Athlete_Country' in grouped.columns:
         mask = grouped['Event'].isin(relay_events) & (grouped['Athlete_Name'].isna() | (grouped['Athlete_Name'] == ""))
         grouped.loc[mask, 'Athlete_Name'] = grouped.loc[mask, 'Athlete_Country']
 
-    # Use the (possibly updated) Athlete_Name for the header.
+    # Use the (possibly updated) Athlete_Name for header
     name = grouped['Athlete_Name'].iloc[0] if 'Athlete_Name' in grouped.columns and pd.notnull(grouped['Athlete_Name'].iloc[0]) else "Relay Team"
     country = grouped['Athlete_Country'].iloc[0] if 'Athlete_Country' in grouped.columns else "N/A"
     dob = grouped['Date_of_Birth'].iloc[0] if 'Date_of_Birth' in grouped.columns else None
@@ -495,7 +493,6 @@ def show_single_athlete_profile(profile, db_label):
                         color='white',
                         fontSize=16
                     )
-
                     st.altair_chart(chart, use_container_width=True)
                 except Exception as e:
                     st.error(f"❌ Chart error for {ev_}: {e}")
@@ -555,6 +552,7 @@ def show_single_athlete_profile(profile, db_label):
             st.dataframe(style_dark_df(ensure_json_safe(
                 top10[[c for c in cshow if c in top10.columns]]
             )))
+
 
 ###################################
 # 7) Athlete Profiles Container
