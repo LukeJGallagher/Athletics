@@ -332,12 +332,16 @@ def show_single_athlete_profile(profile, db_label):
     dob = profile['Date_of_Birth'].iloc[0] if 'Date_of_Birth' in profile.columns else None
 
     def position_medal(pos):
-        if pd.isna(pos): return ""
+        if pd.isna(pos):
+            return ""
         try:
             p_ = int(pos)
-            if p_ == 1: return "🥇"
-            elif p_ == 2: return "🥈"
-            elif p_ == 3: return "🥉"
+            if p_ == 1:
+                return "🥇"
+            elif p_ == 2:
+                return "🥈"
+            elif p_ == 3:
+                return "🥉"
         except:
             return ""
         return ""
@@ -359,10 +363,7 @@ def show_single_athlete_profile(profile, db_label):
     if 'Result_numeric' in grouped.columns:
         grouped['Result_numeric'] = pd.to_numeric(grouped['Result_numeric'], errors='coerce')
 
-    # For relay events, leave Result_numeric as is (or handle separately if needed)
-    if 'Event' in grouped.columns:
-        is_relay = grouped['Event'].str.contains("relay", case=False, na=False)
-        # You might choose to aggregate or handle relay events differently
+    # (For relay events, additional handling is done later in the charting block)
 
     events_ = ", ".join(grouped['Event'].dropna().unique()) if 'Event' in grouped.columns else "N/A"
 
@@ -404,26 +405,32 @@ def show_single_athlete_profile(profile, db_label):
         st.markdown("### Performance Progression Chart")
         if 'Result_numeric' in grouped.columns and 'Event' in grouped.columns:
             for ev_ in grouped['Event'].dropna().unique():
-                # Separate handling for relay events
+                # Separate handling for relay events:
                 if "relay" in ev_.lower():
                     relay_data = grouped[grouped['Event'].str.contains("relay", case=False, na=False)]
                     relay_data = relay_data[relay_data['Result_numeric'].notna()]
                     if relay_data.empty:
                         st.warning(f"⚠️ No valid numeric results for relay event **{ev_}**.")
                     else:
-                        # For relays, we create a bar chart of average performance by year
-                        relay_chart = alt.Chart(relay_data).mark_bar().encode(
+                        # Group relay events by Athlete_Country and Year, then compute average performance.
+                        relay_grouped = relay_data.groupby(['Athlete_Country', 'Year'], as_index=False).agg({'Result_numeric': 'mean'})
+                        relay_chart = alt.Chart(relay_grouped).mark_bar().encode(
                             x=alt.X('Year:O', title='Year'),
-                            y=alt.Y('mean(Result_numeric):Q', title='Average Performance'),
-                            tooltip=['Year', alt.Tooltip('mean(Result_numeric):Q', title='Avg Performance')]
+                            y=alt.Y('Result_numeric:Q', title='Average Performance'),
+                            tooltip=[
+                                'Athlete_Country',
+                                'Year',
+                                alt.Tooltip('Result_numeric:Q', title='Avg Performance')
+                            ]
                         ).properties(
-                            title=f"{ev_} Relay Average Performance by Year",
+                            title=f"{ev_} Relay – Average Performance by Country",
                             width=800,
                             height=300
                         )
                         st.altair_chart(relay_chart, use_container_width=True)
                     continue  # Skip further processing for relay events
 
+                # Standard processing for non-relay events:
                 sub_ev = grouped[
                     (grouped['Event'] == ev_) &
                     grouped['Result_numeric'].notna() &
