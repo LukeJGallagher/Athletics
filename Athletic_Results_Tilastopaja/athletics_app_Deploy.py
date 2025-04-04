@@ -313,6 +313,14 @@ def load_db(db_filename: str):
     df = pd.read_sql_query("SELECT * FROM athletics_data", conn)
     conn.close()
     df = clean_columns(df)
+    
+    # Fill blank Athlete_Name with Athlete_Country
+    if 'Athlete_Name' in df.columns and 'Athlete_Country' in df.columns:
+        # Normalize blank values
+        df['Athlete_Name'] = df['Athlete_Name'].apply(lambda x: x if pd.notnull(x) and x.strip() != "" else None)
+        # Fill missing Athlete_Name with Athlete_Country
+        df.loc[df['Athlete_Name'].isna(), 'Athlete_Name'] = df['Athlete_Country']
+
     if 'Result' in df.columns and 'Event' in df.columns:
         df['Result_numeric'] = df.apply(lambda row: parse_result(row['Result'], row['Event']), axis=1)
     if db_filename == "saudi_athletes.db":
