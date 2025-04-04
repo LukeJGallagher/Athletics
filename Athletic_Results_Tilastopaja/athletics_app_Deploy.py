@@ -665,19 +665,25 @@ def show_qualification_stage(df):
         st.write("**Min / Avg / Max / Fastest Q / Slowest Q by Round & Year**")
         st.dataframe(style_dark_df(ensure_json_safe(full_stats)))
 
+                # --- Rounds Over Years (Min/Avg/Max + Qualifier Lines) Chart ---
         melted = full_stats.melt(id_vars=['Round', 'Year'], var_name='Metric', value_name='Value')
         custom_order = ["Prelims", "Heats", "QF", "SF", "Final"]
         melted['Round'] = pd.Categorical(melted['Round'], categories=custom_order, ordered=True)
-        qualifier_lines = ['Fastest_Q', 'Slowest_Q']
+        
+        # Calculate the domain from the melted data
         y_min = melted['Value'].min()
         y_max = melted['Value'].max()
+        # If either y_min or y_max is NaN, set fallback values
+        if np.isnan(y_min) or np.isnan(y_max):
+            y_min, y_max = 0, 1  # fallback domain
         y_padding = (y_max - y_min) * 0.1 if y_max > y_min else 1
+
         y_axis = alt.Y(
             'Value:Q',
             title='Performance',
             scale=alt.Scale(domain=[y_min - y_padding, y_max + y_padding])
         )
-        st.markdown("### Rounds Over Years (Min/Avg/Max + Qualifier Lines)")
+
         chart = alt.Chart(melted).mark_line(
             interpolate='monotone',
             point=alt.OverlayMarkDef(filled=True, size=60)
@@ -686,7 +692,7 @@ def show_qualification_stage(df):
             y=y_axis,
             color=alt.Color('Round:N', sort=custom_order, scale=alt.Scale(scheme='dark2')),
             strokeDash=alt.condition(
-                alt.FieldOneOfPredicate(field='Metric', oneOf=qualifier_lines),
+                alt.FieldOneOfPredicate(field='Metric', oneOf=['Fastest_Q', 'Slowest_Q']),
                 alt.value([4, 4]),
                 alt.value([1])
             ),
@@ -712,7 +718,9 @@ def show_qualification_stage(df):
             color='white',
             fontSize=16
         )
+
         st.altair_chart(chart, use_container_width=True)
+
     else:
         st.info("Need 'Round', 'Result_numeric', 'Year' columns for progression chart.")
         st.dataframe(style_dark_df(ensure_json_safe(df.head(10))))
