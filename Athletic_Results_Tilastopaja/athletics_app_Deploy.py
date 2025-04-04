@@ -326,10 +326,22 @@ def load_db(db_filename: str):
 ###################################
 # 6) Athlete Expansions
 ###################################
+###################################
+# 6) Athlete Expansions
+###################################
 def show_single_athlete_profile(profile, db_label):
-    name = profile['Athlete_Name'].iloc[0] if 'Athlete_Name' in profile.columns and pd.notnull(profile['Athlete_Name'].iloc[0]) else "Relay Team"
-    country = profile['Athlete_Country'].iloc[0] if 'Athlete_Country' in profile.columns else "N/A"
-    dob = profile['Date_of_Birth'].iloc[0] if 'Date_of_Birth' in profile.columns else None
+    grouped = profile.copy()
+
+    # If event is a relay and Athlete_Name is blank, fill it with Athlete_Country.
+    relay_events = ['4x100m Relay', '4x400m Relay', '4x400m Mixed Relay']
+    if 'Event' in grouped.columns and 'Athlete_Name' in grouped.columns and 'Athlete_Country' in grouped.columns:
+        mask = grouped['Event'].isin(relay_events) & (grouped['Athlete_Name'].isna() | (grouped['Athlete_Name'] == ""))
+        grouped.loc[mask, 'Athlete_Name'] = grouped.loc[mask, 'Athlete_Country']
+
+    # Use the (possibly updated) Athlete_Name for the header.
+    name = grouped['Athlete_Name'].iloc[0] if 'Athlete_Name' in grouped.columns and pd.notnull(grouped['Athlete_Name'].iloc[0]) else "Relay Team"
+    country = grouped['Athlete_Country'].iloc[0] if 'Athlete_Country' in grouped.columns else "N/A"
+    dob = grouped['Date_of_Birth'].iloc[0] if 'Date_of_Birth' in grouped.columns else None
 
     def position_medal(pos):
         if pd.isna(pos):
@@ -346,7 +358,6 @@ def show_single_athlete_profile(profile, db_label):
             return ""
         return ""
 
-    grouped = profile.copy()
     if 'Start_Date' in grouped.columns:
         grouped['Start_Date'] = pd.to_datetime(grouped['Start_Date'], errors='coerce')
         grouped['Year'] = grouped['Start_Date'].dt.year
@@ -362,8 +373,6 @@ def show_single_athlete_profile(profile, db_label):
 
     if 'Result_numeric' in grouped.columns:
         grouped['Result_numeric'] = pd.to_numeric(grouped['Result_numeric'], errors='coerce')
-
-    # (For relay events, additional handling is done later in the charting block)
 
     events_ = ", ".join(grouped['Event'].dropna().unique()) if 'Event' in grouped.columns else "N/A"
 
