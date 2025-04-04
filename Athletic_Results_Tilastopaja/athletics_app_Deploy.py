@@ -156,7 +156,6 @@ st.set_page_config(
 ###################################
 import streamlit as st
 
-# Set background from GitHub-hosted image
 def set_background_from_url(url):
     css = f"""
     <style>
@@ -179,11 +178,7 @@ def set_background_from_url(url):
     """
     st.markdown(css, unsafe_allow_html=True)
 
-# ✅ Use your raw GitHub image URL here:
 set_background_from_url("https://raw.githubusercontent.com/LukeJGallagher/Athletics/main/Athletic_Results_Tilastopaja/Background2.PNG")
-
-
-
 
 ###################################
 # 3) DataFrame / Chart Helpers
@@ -361,6 +356,14 @@ def show_single_athlete_profile(profile, db_label):
         grouped['Round'] = grouped['Round'].fillna('Final')
         grouped['Round'] = grouped['Round'].replace({"": "Final", "None": "Final", "nan": "Final"})
 
+    if 'Result_numeric' in grouped.columns:
+        grouped['Result_numeric'] = pd.to_numeric(grouped['Result_numeric'], errors='coerce')
+
+    # For relay events, leave Result_numeric as is (or handle separately if needed)
+    if 'Event' in grouped.columns:
+        is_relay = grouped['Event'].str.contains("relay", case=False, na=False)
+        # You might choose to aggregate or handle relay events differently
+
     events_ = ", ".join(grouped['Event'].dropna().unique()) if 'Event' in grouped.columns else "N/A"
 
     with st.expander(f"{name} ({country})", expanded=False):
@@ -392,7 +395,7 @@ def show_single_athlete_profile(profile, db_label):
         if 'Result_numeric' in recent.columns and not recent['Result_numeric'].isna().all():
             recent = recent.sort_values('Result_numeric', ascending=True)
             recent['Highlight'] = (recent['Result_numeric'] == recent['Result_numeric'].min())
-            recent['Highlight'] = recent['Highlight'].apply(lambda x: '🏅' if x else '')
+            recent['Highlight'] = recent['Highlight'].apply(lambda x: '🌾' if x else '')
         if 'Position' in recent.columns:
             recent['Medal'] = recent['Position'].apply(position_medal)
         show_cols = ['Result', 'Event', 'Competition', 'Competition_ID', 'Stadium', 'Start_Date', 'Round', 'Position', 'Medal', 'Age', 'Highlight']
@@ -401,12 +404,31 @@ def show_single_athlete_profile(profile, db_label):
         st.markdown("### Performance Progression Chart")
         if 'Result_numeric' in grouped.columns and 'Event' in grouped.columns:
             for ev_ in grouped['Event'].dropna().unique():
+                # Separate handling for relay events
+                if "relay" in ev_.lower():
+                    relay_data = grouped[grouped['Event'].str.contains("relay", case=False, na=False)]
+                    relay_data = relay_data[relay_data['Result_numeric'].notna()]
+                    if relay_data.empty:
+                        st.warning(f"⚠️ No valid numeric results for relay event **{ev_}**.")
+                    else:
+                        # For relays, we create a bar chart of average performance by year
+                        relay_chart = alt.Chart(relay_data).mark_bar().encode(
+                            x=alt.X('Year:O', title='Year'),
+                            y=alt.Y('mean(Result_numeric):Q', title='Average Performance'),
+                            tooltip=['Year', alt.Tooltip('mean(Result_numeric):Q', title='Avg Performance')]
+                        ).properties(
+                            title=f"{ev_} Relay Average Performance by Year",
+                            width=800,
+                            height=300
+                        )
+                        st.altair_chart(relay_chart, use_container_width=True)
+                    continue  # Skip further processing for relay events
+
                 sub_ev = grouped[
                     (grouped['Event'] == ev_) &
                     grouped['Result_numeric'].notna() &
                     grouped['Start_Date'].notna()
                 ].copy()
-
                 sub_ev = sub_ev[np.isfinite(sub_ev['Result_numeric'])]
                 if sub_ev.empty or sub_ev['Result_numeric'].isna().all():
                     st.warning(f"⚠️ No valid numeric results for **{ev_}**.")
@@ -461,7 +483,6 @@ def show_single_athlete_profile(profile, db_label):
                     st.altair_chart(chart, use_container_width=True)
                 except Exception as e:
                     st.error(f"❌ Chart error for {ev_}: {e}")
-
 
         st.markdown("### 🗕️ Current Season Results")
         if 'Year' in grouped.columns:
@@ -546,10 +567,6 @@ def show_athlete_profiles(filtered_df, db_label):
         if profile.empty:
             continue
         show_single_athlete_profile(profile, db_label)
-
-
-
-
 
 ###################################
 # 8) Qualification Stage
@@ -958,11 +975,7 @@ def main():
                 with sub_tabs[1]:
                     show_final_performances(df_maj)
 
-
-
-
 if __name__ == "__main__":
-  
     main()
 
 # Footer
