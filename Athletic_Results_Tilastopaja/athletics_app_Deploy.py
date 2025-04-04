@@ -402,61 +402,66 @@ def show_single_athlete_profile(profile, db_label):
         st.markdown("### Performance Progression Chart")
         if 'Result_numeric' in grouped.columns and 'Event' in grouped.columns:
             for ev_ in grouped['Event'].dropna().unique():
-                sub_ev = grouped[(grouped['Event'] == ev_) & grouped['Result_numeric'].notna()]
-                sub_ev = sub_ev[sub_ev['Start_Date'].notna()]
+                sub_ev = grouped[
+                    (grouped['Event'] == ev_) &
+                    grouped['Result_numeric'].notna() &
+                    grouped['Start_Date'].notna()
+                ].copy()
 
                 if sub_ev.empty:
                     continue
+
+                sub_ev = sub_ev[np.isfinite(sub_ev['Result_numeric'])]
+                if sub_ev.empty or sub_ev['Result_numeric'].isna().all():
+                    st.warning(f"⚠️ No valid numeric results for **{ev_}**.")
+                    continue
+
                 q1 = sub_ev['Result_numeric'].quantile(0.25)
                 q3 = sub_ev['Result_numeric'].quantile(0.75)
                 iqr = q3 - q1
                 lower = q1 - 1.5 * iqr
                 upper = q3 + 1.5 * iqr
-                sub_ev_filtered = sub_ev[(sub_ev['Result_numeric'] >= lower) & (sub_ev['Result_numeric'] <= upper)]
+                sub_ev_filtered = sub_ev[
+                    (sub_ev['Result_numeric'] >= lower) &
+                    (sub_ev['Result_numeric'] <= upper)
+                ]
 
-                if sub_ev_filtered['Result_numeric'].isna().all():
-                    st.info(f"📬 No valid performance data for **{ev_}**, skipping chart.")
+                if sub_ev_filtered.empty or sub_ev_filtered['Result_numeric'].nunique() < 2:
+                    st.info(f"📬 Not enough valid data to chart **{ev_}**.")
                     continue
 
                 y_min = sub_ev_filtered['Result_numeric'].min()
                 y_max = sub_ev_filtered['Result_numeric'].max()
+                y_pad = (y_max - y_min) * 0.1 if y_max > y_min else 1
 
-                if pd.isna(y_min) or pd.isna(y_max) or not np.isfinite(y_min) or not np.isfinite(y_max):
-                    st.warning(f"❌ Skipping chart for **{ev_}** due to non-numeric results.")
-                    continue
+                chart = alt.Chart(sub_ev_filtered).mark_line(
+                    interpolate='monotone',
+                    point=alt.OverlayMarkDef(filled=True, size=60)
+                ).encode(
+                    x=alt.X('Start_Date:T', title='Date'),
+                    y=alt.Y('Result_numeric:Q', title='Performance', scale=alt.Scale(domain=[y_min - y_pad, y_max + y_pad])),
+                    tooltip=['Start_Date:T', 'Event', 'Result', 'Competition', 'Round', 'Position', 'Age'],
+                    color=alt.value('#00FF7F')
+                ).properties(
+                    title=f"{ev_} Progression",
+                    width=800,
+                    height=300
+                ).configure_axis(
+                    labelColor='white',
+                    titleColor='white',
+                    labelFontSize=12,
+                    titleFontSize=14,
+                    gridColor='gray',
+                    domainColor='white'
+                ).configure_view(
+                    strokeWidth=0,
+                    fill='black'
+                ).configure_title(
+                    color='white',
+                    fontSize=16
+                )
 
-                if sub_ev_filtered['Result_numeric'].notna().sum() >= 2:
-                    y_pad = (y_max - y_min) * 0.1 if y_max > y_min else 1
-                    y_axis = alt.Y('Result_numeric:Q', title='Performance', scale=alt.Scale(domain=[y_min - y_pad, y_max + y_pad]))
-                    chart = alt.Chart(sub_ev_filtered).mark_line(
-                        interpolate='monotone',
-                        point=alt.OverlayMarkDef(filled=True, size=60)
-                    ).encode(
-                        x=alt.X('Start_Date:T', title='Date'),
-                        y=y_axis,
-                        tooltip=['Start_Date:T', 'Event', 'Result', 'Competition', 'Round', 'Position', 'Age'],
-                        color=alt.value('#00FF7F')
-                    ).properties(
-                        title=f"{ev_} Progression",
-                        width=800,
-                        height=300
-                    ).configure_axis(
-                        labelColor='white',
-                        titleColor='white',
-                        labelFontSize=12,
-                        titleFontSize=14,
-                        gridColor='gray',
-                        domainColor='white'
-                    ).configure_view(
-                        strokeWidth=0,
-                        fill='black'
-                    ).configure_title(
-                        color='white',
-                        fontSize=16
-                    )
-                    st.altair_chart(chart, use_container_width=True)
-                else:
-                    st.info(f"📬 Not enough valid data to chart **{ev_}**.")
+                st.altair_chart(chart, use_container_width=True)
 
         st.markdown("### 🗕️ Current Season Results")
         if 'Year' in grouped.columns:
