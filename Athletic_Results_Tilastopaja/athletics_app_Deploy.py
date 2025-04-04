@@ -375,14 +375,13 @@ def show_single_athlete_profile(profile, db_label):
                 st.markdown("**Date of Birth:** N/A")
             st.markdown(f"**Events:** {events_}")
         with col2:
-            if 'Result_numeric' in grouped.columns and not grouped['Result_numeric'].isna().all():
-                best_idx = grouped['Result_numeric'].idxmin()
-                best_row = grouped.loc[best_idx]
+            if 'Result_numeric' in grouped.columns and grouped['Result_numeric'].notna().any():
+                valid_numeric = grouped.loc[grouped['Result_numeric'].idxmin()]
                 st.markdown("**Personal Best:**")
                 st.markdown(
-                    f"{best_row.get('Event','N/A')} — {best_row.get('Result','N/A')} "
-                    f"@ {best_row.get('Competition','N/A')} on {best_row.get('Start_Date','N/A')} "
-                    f"in {best_row.get('Stadium','N/A')}"
+                    f"{valid_numeric.get('Event','N/A')} — {valid_numeric.get('Result','N/A')} "
+                    f"@ {valid_numeric.get('Competition','N/A')} on {valid_numeric.get('Start_Date','N/A')} "
+                    f"in {valid_numeric.get('Stadium','N/A')}"
                 )
 
         st.markdown("### Notable Performances (Last 2 Years)")
@@ -390,7 +389,7 @@ def show_single_athlete_profile(profile, db_label):
         if 'Year' in recent.columns:
             cur_year = datetime.datetime.now().year
             recent = recent[recent['Year'] >= cur_year - 2]
-        if 'Result_numeric' in recent.columns:
+        if 'Result_numeric' in recent.columns and not recent['Result_numeric'].isna().all():
             recent = recent.sort_values('Result_numeric', ascending=True)
             recent['Highlight'] = (recent['Result_numeric'] == recent['Result_numeric'].min())
             recent['Highlight'] = recent['Highlight'].apply(lambda x: '🏅' if x else '')
@@ -407,9 +406,6 @@ def show_single_athlete_profile(profile, db_label):
                     grouped['Result_numeric'].notna() &
                     grouped['Start_Date'].notna()
                 ].copy()
-
-                if sub_ev.empty:
-                    continue
 
                 sub_ev = sub_ev[np.isfinite(sub_ev['Result_numeric'])]
                 if sub_ev.empty or sub_ev['Result_numeric'].isna().all():
@@ -434,34 +430,38 @@ def show_single_athlete_profile(profile, db_label):
                 y_max = sub_ev_filtered['Result_numeric'].max()
                 y_pad = (y_max - y_min) * 0.1 if y_max > y_min else 1
 
-                chart = alt.Chart(sub_ev_filtered).mark_line(
-                    interpolate='monotone',
-                    point=alt.OverlayMarkDef(filled=True, size=60)
-                ).encode(
-                    x=alt.X('Start_Date:T', title='Date'),
-                    y=alt.Y('Result_numeric:Q', title='Performance', scale=alt.Scale(domain=[y_min - y_pad, y_max + y_pad])),
-                    tooltip=['Start_Date:T', 'Event', 'Result', 'Competition', 'Round', 'Position', 'Age'],
-                    color=alt.value('#00FF7F')
-                ).properties(
-                    title=f"{ev_} Progression",
-                    width=800,
-                    height=300
-                ).configure_axis(
-                    labelColor='white',
-                    titleColor='white',
-                    labelFontSize=12,
-                    titleFontSize=14,
-                    gridColor='gray',
-                    domainColor='white'
-                ).configure_view(
-                    strokeWidth=0,
-                    fill='black'
-                ).configure_title(
-                    color='white',
-                    fontSize=16
-                )
+                try:
+                    chart = alt.Chart(sub_ev_filtered).mark_line(
+                        interpolate='monotone',
+                        point=alt.OverlayMarkDef(filled=True, size=60)
+                    ).encode(
+                        x=alt.X('Start_Date:T', title='Date'),
+                        y=alt.Y('Result_numeric:Q', title='Performance', scale=alt.Scale(domain=[y_min - y_pad, y_max + y_pad])),
+                        tooltip=['Start_Date:T', 'Event', 'Result', 'Competition', 'Round', 'Position', 'Age'],
+                        color=alt.value('#00FF7F')
+                    ).properties(
+                        title=f"{ev_} Progression",
+                        width=800,
+                        height=300
+                    ).configure_axis(
+                        labelColor='white',
+                        titleColor='white',
+                        labelFontSize=12,
+                        titleFontSize=14,
+                        gridColor='gray',
+                        domainColor='white'
+                    ).configure_view(
+                        strokeWidth=0,
+                        fill='black'
+                    ).configure_title(
+                        color='white',
+                        fontSize=16
+                    )
 
-                st.altair_chart(chart, use_container_width=True)
+                    st.altair_chart(chart, use_container_width=True)
+                except Exception as e:
+                    st.error(f"❌ Chart error for {ev_}: {e}")
+
 
         st.markdown("### 🗕️ Current Season Results")
         if 'Year' in grouped.columns:
