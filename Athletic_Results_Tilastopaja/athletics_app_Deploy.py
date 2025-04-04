@@ -308,11 +308,21 @@ def parse_result(value, event):
 ###################################
 # 5) DB Loader
 ###################################
+import os
+import re
+import sqlite3
+import pandas as pd
+import streamlit as st
+import altair as alt
+import numpy as np
+import base64
+import datetime
+
 # 🩹 PATCH — fill missing athlete names with country for relays
 def patch_fill_missing_athletes(df):
     if 'Athlete_Name' in df.columns and 'Athlete_Country' in df.columns:
         df['Athlete_Name'] = df['Athlete_Name'].fillna(df['Athlete_Country'])
-        df['Athlete_Name'] = df['Athlete_Name'].replace({"": df['Athlete_Country']})
+        df.loc[df['Athlete_Name'].str.strip() == '', 'Athlete_Name'] = df['Athlete_Country']
     return df
 
 # 🩹 PATCH — check before plotting Altair charts with NaN domain
@@ -351,7 +361,6 @@ def load_db(db_filename: str):
 # Use safe_chart() before plotting in any function like:
 # if not safe_chart(filtered_df, "4x100m Relay"):
 #     return
-
 
 ###################################
 # 6) Athlete Expansions
