@@ -350,7 +350,7 @@ def show_single_athlete_profile(profile, db_label):
     grouped = profile.copy()
     if 'Start_Date' in grouped.columns:
         grouped['Year'] = grouped['Start_Date'].dt.year.astype('Int64')
-    if dob is not None and pd.notnull(dob) and 'Start_Date' in grouped.columns:
+    if pd.notna(dob) and 'Start_Date' in grouped.columns:
         grouped['Age'] = ((grouped['Start_Date'] - dob).dt.days / 365.25).astype(int)
     else:
         grouped['Age'] = np.nan
@@ -367,7 +367,7 @@ def show_single_athlete_profile(profile, db_label):
         with col1:
             st.markdown(f"**Name:** {name}")
             st.markdown(f"**Country:** {country}")
-            if dob is not None:
+            if pd.notna(dob):
                 st.markdown(f"**Date of Birth:** {dob.strftime('%Y-%m-%d')}")
             else:
                 st.markdown("**Date of Birth:** N/A")
@@ -382,6 +382,7 @@ def show_single_athlete_profile(profile, db_label):
                     f"@ {best_row.get('Competition','N/A')} on {best_row.get('Start_Date','N/A')} "
                     f"in {best_row.get('Stadium','N/A')}"
                 )
+
         st.markdown("### Notable Performances (Last 2 Years)")
         recent = grouped.copy()
         if 'Year' in recent.columns:
@@ -395,6 +396,7 @@ def show_single_athlete_profile(profile, db_label):
             recent['Medal'] = recent['Position'].apply(position_medal)
         show_cols = ['Result', 'Event', 'Competition', 'Competition_ID', 'Stadium', 'Start_Date', 'Round', 'Position', 'Medal', 'Age', 'Highlight']
         st.dataframe(style_dark_df(ensure_json_safe(recent[[c for c in show_cols if c in recent.columns]].head(5))))
+
         st.markdown("### Performance Progression Chart")
         if 'Result_numeric' in grouped.columns and 'Event' in grouped.columns:
             for ev_ in grouped['Event'].dropna().unique():
@@ -438,6 +440,8 @@ def show_single_athlete_profile(profile, db_label):
                     fontSize=16
                 )
                 st.altair_chart(chart, use_container_width=True)
+
+
         st.markdown("### 🗕️ Current Season Results")
         if 'Year' in grouped.columns:
             cyr = datetime.datetime.now().year
@@ -554,10 +558,12 @@ def show_qualification_stage(df):
         "F": "Final"
     }
     df['Round'] = df['Round'].map(round_clean_map).fillna(df['Round'])
+
     if 'Athlete_Country' in df.columns:
         df = df.copy()
-        df.loc[:, 'Country_Flag'] = df['Athlete_Country'].apply(get_flag)
-        df.loc[:, 'Athlete_Country'] = df['Country_Flag'] + ' ' + df['Athlete_Country']
+        df['Country_Flag'] = df['Athlete_Country'].apply(get_flag)
+        df['Athlete_Country'] = df['Country_Flag'] + ' ' + df['Athlete_Country']
+
     def remove_outliers(df, field='Result_numeric'):
         q1 = df[field].quantile(0.25)
         q3 = df[field].quantile(0.75)
@@ -565,28 +571,40 @@ def show_qualification_stage(df):
         lower = q1 - 1.5 * iqr
         upper = q3 + 1.5 * iqr
         return df[(df[field] >= lower) & (df[field] <= upper)]
+
     if {'Round', 'Result_numeric', 'Year'}.issubset(df.columns):
         df_filtered = df[df['Result_numeric'].notna()].copy()
         df_filtered = remove_outliers(df_filtered)
+
         removed_outliers = df[~df.index.isin(df_filtered.index)]
         if not removed_outliers.empty:
             with st.expander("📛 Removed Outliers (IQR method)", expanded=False):
                 st.dataframe(style_dark_df(ensure_json_safe(
                     removed_outliers[['Event', 'Round', 'Year', 'Result', 'Result_numeric']]
                 )))
+
         round_year_stats = df_filtered.groupby(['Round', 'Year'], as_index=False).agg({
             'Result_numeric': ['mean', 'min', 'max']
         })
         round_year_stats.columns = ['Round', 'Year', 'Avg', 'Min', 'Max']
+
         def get_qualifier_stats(subdf):
             sorted_ = subdf.sort_values('Result_numeric').dropna(subset=['Result_numeric'])
             fastest_q = sorted_['Result_numeric'].iloc[1] if len(sorted_) > 1 else np.nan
             slowest_q = sorted_['Result_numeric'].iloc[7] if len(sorted_) > 7 else np.nan
             return pd.Series({'Fastest_Q': fastest_q, 'Slowest_Q': slowest_q})
-        qualifier_stats = df_filtered.groupby(['Round', 'Year']).apply(get_qualifier_stats).reset_index()
+
+        qualifier_stats = (
+            df_filtered.groupby(['Round', 'Year'], as_index=False)
+            .apply(get_qualifier_stats)
+            .reset_index(drop=True)
+        )
+
         full_stats = pd.merge(round_year_stats, qualifier_stats, on=['Round', 'Year'], how='outer')
+
         st.write("**Min / Avg / Max / Fastest Q / Slowest Q by Round & Year**")
         st.dataframe(style_dark_df(ensure_json_safe(full_stats)))
+
         melted = full_stats.melt(id_vars=['Round', 'Year'], var_name='Metric', value_name='Value')
         custom_order = ["Prelims", "Heats", "QF", "SF", "Final"]
         melted['Round'] = pd.Categorical(melted['Round'], categories=custom_order, ordered=True)
