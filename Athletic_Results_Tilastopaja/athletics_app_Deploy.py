@@ -349,9 +349,9 @@ def show_single_athlete_profile(profile, db_label):
 
     grouped = profile.copy()
     if 'Start_Date' in grouped.columns:
-        grouped['Year'] = grouped['Start_Date'].dt.year.astype('Int64')
+        grouped['Year'] = pd.to_datetime(grouped['Start_Date'], errors='coerce').dt.year.astype('Int64')
     if dob is not None and pd.notnull(dob) and 'Start_Date' in grouped.columns:
-        grouped['Age'] = ((grouped['Start_Date'] - dob).dt.days / 365.25).astype(int)
+        grouped['Age'] = ((pd.to_datetime(grouped['Start_Date'], errors='coerce') - dob).dt.days / 365.25).astype('Int64')
     else:
         grouped['Age'] = np.nan
 
@@ -401,6 +401,9 @@ def show_single_athlete_profile(profile, db_label):
         if 'Result_numeric' in grouped.columns and 'Event' in grouped.columns:
             for ev_ in grouped['Event'].dropna().unique():
                 sub_ev = grouped[(grouped['Event'] == ev_) & grouped['Result_numeric'].notna()]
+                sub_ev['Start_Date'] = pd.to_datetime(sub_ev['Start_Date'], errors='coerce')
+                sub_ev = sub_ev[sub_ev['Start_Date'].notna()]
+
                 if sub_ev.empty:
                     continue
                 q1 = sub_ev['Result_numeric'].quantile(0.25)
@@ -453,6 +456,7 @@ def show_single_athlete_profile(profile, db_label):
                     st.altair_chart(chart, use_container_width=True)
                 else:
                     st.info(f"📬 Not enough valid data to chart **{ev_}**.")
+
 
 
 
