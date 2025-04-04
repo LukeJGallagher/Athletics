@@ -409,9 +409,15 @@ def show_single_athlete_profile(profile, db_label):
                 lower = q1 - 1.5 * iqr
                 upper = q3 + 1.5 * iqr
                 sub_ev_filtered = sub_ev[(sub_ev['Result_numeric'] >= lower) & (sub_ev['Result_numeric'] <= upper)]
+
+                y_min = sub_ev_filtered['Result_numeric'].min()
+                y_max = sub_ev_filtered['Result_numeric'].max()
+
+                if not np.isfinite(y_min) or not np.isfinite(y_max):
+                    st.warning(f"❌ Skipping chart for {ev_} due to invalid result values.")
+                    continue
+
                 if sub_ev_filtered['Result_numeric'].notna().sum() >= 2:
-                    y_min = sub_ev_filtered['Result_numeric'].min()
-                    y_max = sub_ev_filtered['Result_numeric'].max()
                     y_pad = (y_max - y_min) * 0.1 if y_max > y_min else 1
                     y_axis = alt.Y('Result_numeric:Q', title='Performance', scale=alt.Scale(domain=[y_min - y_pad, y_max + y_pad]))
                     chart = alt.Chart(sub_ev_filtered).mark_line(
@@ -443,6 +449,7 @@ def show_single_athlete_profile(profile, db_label):
                     st.altair_chart(chart, use_container_width=True)
                 else:
                     st.info(f"📬 Not enough valid data to chart **{ev_}**.")
+
 
 
         st.markdown("### 🗕️ Current Season Results")
