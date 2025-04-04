@@ -1,3 +1,4 @@
+
 import os
 import re
 import sqlite3
@@ -156,6 +157,7 @@ st.set_page_config(
 ###################################
 import streamlit as st
 
+# Set background from GitHub-hosted image
 def set_background_from_url(url):
     css = f"""
     <style>
@@ -178,7 +180,11 @@ def set_background_from_url(url):
     """
     st.markdown(css, unsafe_allow_html=True)
 
+# ✅ Use your raw GitHub image URL here:
 set_background_from_url("https://raw.githubusercontent.com/LukeJGallagher/Athletics/main/Athletic_Results_Tilastopaja/Background2.PNG")
+
+
+
 
 ###################################
 # 3) DataFrame / Chart Helpers
@@ -302,6 +308,21 @@ def parse_result(value, event):
 ###################################
 # 5) DB Loader
 ###################################
+# 🩹 PATCH — fill missing athlete names with country for relays
+def patch_fill_missing_athletes(df):
+    if 'Athlete_Name' in df.columns and 'Athlete_Country' in df.columns:
+        df['Athlete_Name'] = df['Athlete_Name'].fillna(df['Athlete_Country'])
+        df['Athlete_Name'] = df['Athlete_Name'].replace({"": df['Athlete_Country']})
+    return df
+
+# 🩹 PATCH — check before plotting Altair charts with NaN domain
+def safe_chart(df, event):
+    if df['Result_numeric'].dropna().empty:
+        st.warning(f"⚠️ No numeric results for {event}. Chart cannot be displayed.")
+        return False
+    return True
+
+# Example usage in your data loading function:
 @st.cache_data
 def load_db(db_filename: str):
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -313,14 +334,6 @@ def load_db(db_filename: str):
     df = pd.read_sql_query("SELECT * FROM athletics_data", conn)
     conn.close()
     df = clean_columns(df)
-    
-    # Fill blank Athlete_Name with Athlete_Country
-    if 'Athlete_Name' in df.columns and 'Athlete_Country' in df.columns:
-        # Normalize blank values
-        df['Athlete_Name'] = df['Athlete_Name'].apply(lambda x: x if pd.notnull(x) and x.strip() != "" else None)
-        # Fill missing Athlete_Name with Athlete_Country
-        df.loc[df['Athlete_Name'].isna(), 'Athlete_Name'] = df['Athlete_Country']
-
     if 'Result' in df.columns and 'Event' in df.columns:
         df['Result_numeric'] = df.apply(lambda row: parse_result(row['Result'], row['Event']), axis=1)
     if db_filename == "saudi_athletes.db":
@@ -329,56 +342,47 @@ def load_db(db_filename: str):
         df = coerce_dtypes(df, MAJOR_COLUMNS_DTYPE)
     if 'Year' not in df.columns and 'Start_Date' in df.columns:
         df['Year'] = df['Start_Date'].dt.year
+
+    # 🩹 Apply patch to fill athlete name if missing
+    df = patch_fill_missing_athletes(df)
+
     return df
+
+# Use safe_chart() before plotting in any function like:
+# if not safe_chart(filtered_df, "4x100m Relay"):
+#     return
 
 
 ###################################
 # 6) Athlete Expansions
 ###################################
 def show_single_athlete_profile(profile, db_label):
-    grouped = profile.copy()
-    
-    # For specific relay events, if Athlete_Name is blank, fill it with Athlete_Country.
-    relay_events = ['4x100m Relay', '4x400m Relay', '4x400m Mixed Relay']
-    if 'Event' in grouped.columns and 'Athlete_Name' in grouped.columns and 'Athlete_Country' in grouped.columns:
-        mask = grouped['Event'].isin(relay_events) & (grouped['Athlete_Name'].isna() | (grouped['Athlete_Name'] == ""))
-        grouped.loc[mask, 'Athlete_Name'] = grouped.loc[mask, 'Athlete_Country']
-
-    # Use the (possibly updated) Athlete_Name for header
-    name = grouped['Athlete_Name'].iloc[0] if 'Athlete_Name' in grouped.columns and pd.notnull(grouped['Athlete_Name'].iloc[0]) else "Relay Team"
-    country = grouped['Athlete_Country'].iloc[0] if 'Athlete_Country' in grouped.columns else "N/A"
-    dob = grouped['Date_of_Birth'].iloc[0] if 'Date_of_Birth' in grouped.columns else None
+    name = profile['Athlete_Name'].iloc[0] if 'Athlete_Name' in profile.columns else "Unknown"
+    country = profile['Athlete_Country'].iloc[0] if 'Athlete_Country' in profile.columns else "N/A"
+    dob = profile['Date_of_Birth'].iloc[0] if 'Date_of_Birth' in profile.columns else None
 
     def position_medal(pos):
-        if pd.isna(pos):
-            return ""
+        if pd.isna(pos): return ""
         try:
             p_ = int(pos)
-            if p_ == 1:
-                return "🥇"
-            elif p_ == 2:
-                return "🥈"
-            elif p_ == 3:
-                return "🥉"
+            if p_ == 1: return "🥇"
+            elif p_ == 2: return "🥈"
+            elif p_ == 3: return "🥉"
         except:
             return ""
         return ""
 
+    grouped = profile.copy()
     if 'Start_Date' in grouped.columns:
-        grouped['Start_Date'] = pd.to_datetime(grouped['Start_Date'], errors='coerce')
-        grouped['Year'] = grouped['Start_Date'].dt.year
-    if dob is not None and pd.notnull(dob) and 'Start_Date' in grouped.columns:
-        dob = pd.to_datetime(dob, errors='coerce')
-        grouped['Age'] = ((grouped['Start_Date'] - dob).dt.days / 365.25)
+        grouped['Year'] = grouped['Start_Date'].dt.year.astype('Int64')
+    if pd.notna(dob) and 'Start_Date' in grouped.columns:
+        grouped['Age'] = ((grouped['Start_Date'] - dob).dt.days / 365.25).astype(int)
     else:
         grouped['Age'] = np.nan
 
     if 'Round' in grouped.columns:
         grouped['Round'] = grouped['Round'].fillna('Final')
         grouped['Round'] = grouped['Round'].replace({"": "Final", "None": "Final", "nan": "Final"})
-
-    if 'Result_numeric' in grouped.columns:
-        grouped['Result_numeric'] = pd.to_numeric(grouped['Result_numeric'], errors='coerce')
 
     events_ = ", ".join(grouped['Event'].dropna().unique()) if 'Event' in grouped.columns else "N/A"
 
@@ -388,19 +392,20 @@ def show_single_athlete_profile(profile, db_label):
         with col1:
             st.markdown(f"**Name:** {name}")
             st.markdown(f"**Country:** {country}")
-            if dob is not None and pd.notnull(dob):
+            if pd.notna(dob):
                 st.markdown(f"**Date of Birth:** {dob.strftime('%Y-%m-%d')}")
             else:
                 st.markdown("**Date of Birth:** N/A")
             st.markdown(f"**Events:** {events_}")
         with col2:
-            if 'Result_numeric' in grouped.columns and grouped['Result_numeric'].notna().any():
-                valid_numeric = grouped.loc[grouped['Result_numeric'].idxmin()]
+            if 'Result_numeric' in grouped.columns and not grouped['Result_numeric'].isna().all():
+                best_idx = grouped['Result_numeric'].idxmin()
+                best_row = grouped.loc[best_idx]
                 st.markdown("**Personal Best:**")
                 st.markdown(
-                    f"{valid_numeric.get('Event','N/A')} — {valid_numeric.get('Result','N/A')} "
-                    f"@ {valid_numeric.get('Competition','N/A')} on {valid_numeric.get('Start_Date','N/A')} "
-                    f"in {valid_numeric.get('Stadium','N/A')}"
+                    f"{best_row.get('Event','N/A')} — {best_row.get('Result','N/A')} "
+                    f"@ {best_row.get('Competition','N/A')} on {best_row.get('Start_Date','N/A')} "
+                    f"in {best_row.get('Stadium','N/A')}"
                 )
 
         st.markdown("### Notable Performances (Last 2 Years)")
@@ -408,10 +413,10 @@ def show_single_athlete_profile(profile, db_label):
         if 'Year' in recent.columns:
             cur_year = datetime.datetime.now().year
             recent = recent[recent['Year'] >= cur_year - 2]
-        if 'Result_numeric' in recent.columns and not recent['Result_numeric'].isna().all():
+        if 'Result_numeric' in recent.columns:
             recent = recent.sort_values('Result_numeric', ascending=True)
             recent['Highlight'] = (recent['Result_numeric'] == recent['Result_numeric'].min())
-            recent['Highlight'] = recent['Highlight'].apply(lambda x: '🌾' if x else '')
+            recent['Highlight'] = recent['Highlight'].apply(lambda x: '🏅' if x else '')
         if 'Position' in recent.columns:
             recent['Medal'] = recent['Position'].apply(position_medal)
         show_cols = ['Result', 'Event', 'Competition', 'Competition_ID', 'Stadium', 'Start_Date', 'Round', 'Position', 'Medal', 'Age', 'Highlight']
@@ -420,90 +425,47 @@ def show_single_athlete_profile(profile, db_label):
         st.markdown("### Performance Progression Chart")
         if 'Result_numeric' in grouped.columns and 'Event' in grouped.columns:
             for ev_ in grouped['Event'].dropna().unique():
-                # Separate handling for relay events:
-                if "relay" in ev_.lower():
-                    relay_data = grouped[grouped['Event'].str.contains("relay", case=False, na=False)]
-                    relay_data = relay_data[relay_data['Result_numeric'].notna()]
-                    if relay_data.empty:
-                        st.warning(f"⚠️ No valid numeric results for relay event **{ev_}**.")
-                    else:
-                        # Group relay events by Athlete_Country and Year, then compute average performance.
-                        relay_grouped = relay_data.groupby(['Athlete_Country', 'Year'], as_index=False).agg({'Result_numeric': 'mean'})
-                        relay_chart = alt.Chart(relay_grouped).mark_bar().encode(
-                            x=alt.X('Year:O', title='Year'),
-                            y=alt.Y('Result_numeric:Q', title='Average Performance'),
-                            tooltip=[
-                                'Athlete_Country',
-                                'Year',
-                                alt.Tooltip('Result_numeric:Q', title='Avg Performance')
-                            ]
-                        ).properties(
-                            title=f"{ev_} Relay – Average Performance by Country",
-                            width=800,
-                            height=300
-                        )
-                        st.altair_chart(relay_chart, use_container_width=True)
-                    continue  # Skip further processing for relay events
-
-                # Standard processing for non-relay events:
-                sub_ev = grouped[
-                    (grouped['Event'] == ev_) &
-                    grouped['Result_numeric'].notna() &
-                    grouped['Start_Date'].notna()
-                ].copy()
-                sub_ev = sub_ev[np.isfinite(sub_ev['Result_numeric'])]
-                if sub_ev.empty or sub_ev['Result_numeric'].isna().all():
-                    st.warning(f"⚠️ No valid numeric results for **{ev_}**.")
+                sub_ev = grouped[(grouped['Event'] == ev_) & grouped['Result_numeric'].notna()]
+                if sub_ev.empty:
                     continue
-
                 q1 = sub_ev['Result_numeric'].quantile(0.25)
                 q3 = sub_ev['Result_numeric'].quantile(0.75)
                 iqr = q3 - q1
                 lower = q1 - 1.5 * iqr
                 upper = q3 + 1.5 * iqr
-                sub_ev_filtered = sub_ev[
-                    (sub_ev['Result_numeric'] >= lower) &
-                    (sub_ev['Result_numeric'] <= upper)
-                ]
-
-                if sub_ev_filtered.empty or sub_ev_filtered['Result_numeric'].nunique() < 2:
-                    st.info(f"📬 Not enough valid data to chart **{ev_}**.")
-                    continue
-
+                sub_ev_filtered = sub_ev[(sub_ev['Result_numeric'] >= lower) & (sub_ev['Result_numeric'] <= upper)]
                 y_min = sub_ev_filtered['Result_numeric'].min()
                 y_max = sub_ev_filtered['Result_numeric'].max()
                 y_pad = (y_max - y_min) * 0.1 if y_max > y_min else 1
+                y_axis = alt.Y('Result_numeric:Q', title='Performance', scale=alt.Scale(domain=[y_min - y_pad, y_max + y_pad]))
+                chart = alt.Chart(sub_ev_filtered).mark_line(
+                    interpolate='monotone',
+                    point=alt.OverlayMarkDef(filled=True, size=60)
+                ).encode(
+                    x=alt.X('Start_Date:T', title='Date'),
+                    y=y_axis,
+                    tooltip=['Start_Date:T', 'Event', 'Result', 'Competition', 'Round', 'Position', 'Age'],
+                    color=alt.value('#00FF7F')
+                ).properties(
+                    title=f"{ev_} Progression",
+                    width=800,
+                    height=300
+                ).configure_axis(
+                    labelColor='white',
+                    titleColor='white',
+                    labelFontSize=12,
+                    titleFontSize=14,
+                    gridColor='gray',
+                    domainColor='white'
+                ).configure_view(
+                    strokeWidth=0,
+                    fill='black'
+                ).configure_title(
+                    color='white',
+                    fontSize=16
+                )
+                st.altair_chart(chart, use_container_width=True)
 
-                try:
-                    chart = alt.Chart(sub_ev_filtered).mark_line(
-                        interpolate='monotone',
-                        point=alt.OverlayMarkDef(filled=True, size=60)
-                    ).encode(
-                        x=alt.X('Start_Date:T', title='Date'),
-                        y=alt.Y('Result_numeric:Q', title='Performance', scale=alt.Scale(domain=[y_min - y_pad, y_max + y_pad])),
-                        tooltip=['Start_Date:T', 'Event', 'Result', 'Competition', 'Round', 'Position', 'Age'],
-                        color=alt.value('#00FF7F')
-                    ).properties(
-                        title=f"{ev_} Progression",
-                        width=800,
-                        height=300
-                    ).configure_axis(
-                        labelColor='white',
-                        titleColor='white',
-                        labelFontSize=12,
-                        titleFontSize=14,
-                        gridColor='gray',
-                        domainColor='white'
-                    ).configure_view(
-                        strokeWidth=0,
-                        fill='black'
-                    ).configure_title(
-                        color='white',
-                        fontSize=16
-                    )
-                    st.altair_chart(chart, use_container_width=True)
-                except Exception as e:
-                    st.error(f"❌ Chart error for {ev_}: {e}")
 
         st.markdown("### 🗕️ Current Season Results")
         if 'Year' in grouped.columns:
@@ -561,7 +523,6 @@ def show_single_athlete_profile(profile, db_label):
                 top10[[c for c in cshow if c in top10.columns]]
             )))
 
-
 ###################################
 # 7) Athlete Profiles Container
 ###################################
@@ -589,6 +550,10 @@ def show_athlete_profiles(filtered_df, db_label):
         if profile.empty:
             continue
         show_single_athlete_profile(profile, db_label)
+
+
+
+
 
 ###################################
 # 8) Qualification Stage
@@ -665,25 +630,19 @@ def show_qualification_stage(df):
         st.write("**Min / Avg / Max / Fastest Q / Slowest Q by Round & Year**")
         st.dataframe(style_dark_df(ensure_json_safe(full_stats)))
 
-                # --- Rounds Over Years (Min/Avg/Max + Qualifier Lines) Chart ---
         melted = full_stats.melt(id_vars=['Round', 'Year'], var_name='Metric', value_name='Value')
         custom_order = ["Prelims", "Heats", "QF", "SF", "Final"]
         melted['Round'] = pd.Categorical(melted['Round'], categories=custom_order, ordered=True)
-        
-        # Calculate the domain from the melted data
+        qualifier_lines = ['Fastest_Q', 'Slowest_Q']
         y_min = melted['Value'].min()
         y_max = melted['Value'].max()
-        # If either y_min or y_max is NaN, set fallback values
-        if np.isnan(y_min) or np.isnan(y_max):
-            y_min, y_max = 0, 1  # fallback domain
         y_padding = (y_max - y_min) * 0.1 if y_max > y_min else 1
-
         y_axis = alt.Y(
             'Value:Q',
             title='Performance',
             scale=alt.Scale(domain=[y_min - y_padding, y_max + y_padding])
         )
-
+        st.markdown("### Rounds Over Years (Min/Avg/Max + Qualifier Lines)")
         chart = alt.Chart(melted).mark_line(
             interpolate='monotone',
             point=alt.OverlayMarkDef(filled=True, size=60)
@@ -692,7 +651,7 @@ def show_qualification_stage(df):
             y=y_axis,
             color=alt.Color('Round:N', sort=custom_order, scale=alt.Scale(scheme='dark2')),
             strokeDash=alt.condition(
-                alt.FieldOneOfPredicate(field='Metric', oneOf=['Fastest_Q', 'Slowest_Q']),
+                alt.FieldOneOfPredicate(field='Metric', oneOf=qualifier_lines),
                 alt.value([4, 4]),
                 alt.value([1])
             ),
@@ -718,9 +677,7 @@ def show_qualification_stage(df):
             color='white',
             fontSize=16
         )
-
         st.altair_chart(chart, use_container_width=True)
-
     else:
         st.info("Need 'Round', 'Result_numeric', 'Year' columns for progression chart.")
         st.dataframe(style_dark_df(ensure_json_safe(df.head(10))))
@@ -1005,7 +962,11 @@ def main():
                 with sub_tabs[1]:
                     show_final_performances(df_maj)
 
+
+
+
 if __name__ == "__main__":
+  
     main()
 
 # Footer
