@@ -595,11 +595,17 @@ def show_qualification_stage(df):
     df = df[df['Round'].notna()]
     df = df[~df['Round'].isin(["None", "", "nan", None])]
 
+    if DEBUG_MODE:
+        st.write("🔎 Debug — Raw df head:", df.head(5))
+
     if 'Result_numeric' not in df.columns or df['Result_numeric'].dropna().empty:
         st.warning("No valid numeric results available for qualification analysis.")
         return
 
     df = df[df['Result_numeric'].notna()].copy()
+
+    if DEBUG_MODE:
+        st.write("✅ Debug — Valid Result_numeric count:", df['Result_numeric'].notna().sum())
 
     round_clean_map = {
         "Preliminary round": "Prelims",
