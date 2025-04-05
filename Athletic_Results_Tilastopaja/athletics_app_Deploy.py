@@ -307,8 +307,6 @@ def parse_result(value, event):
 ###################################
 # 5) DB Loader
 ###################################
-
-
 # 🩹 PATCH — fill missing athlete names with country for relays
 
 def patch_fill_missing_athletes(df):
@@ -364,7 +362,7 @@ def load_db(db_filename: str):
 def show_final_chart_patch(df, label="Final Round Top 8"):
     df_valid = safe_chart(df, label)
     if df_valid is None:
-        return None
+        return None, None
     y_min = df_valid['Result_numeric'].min()
     y_max = df_valid['Result_numeric'].max()
     y_padding = (y_max - y_min) * 0.1 if y_max > y_min else 1
@@ -373,8 +371,7 @@ def show_final_chart_patch(df, label="Final Round Top 8"):
         title='Performance',
         scale=alt.Scale(domain=[y_min - y_padding, y_max + y_padding])
     )
-    return y_axis
-
+    return df_valid, y_axis
 
 
 ###################################
