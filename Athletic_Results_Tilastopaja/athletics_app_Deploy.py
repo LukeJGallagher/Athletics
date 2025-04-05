@@ -354,6 +354,11 @@ def load_db(db_filename: str):
         if DEBUG_MODE:
             st.write("✅ Parsing 'Result' column into 'Result_numeric'")
         df['Result_numeric'] = df.apply(lambda row: parse_result(row['Result'], row['Event']), axis=1)
+
+        if DEBUG_MODE:
+            failed = df[df['Result_numeric'].isna() & df['Result'].notna()]
+            st.write("⚠️ Failed to parse Result values (sample):", failed[['Event', 'Result']].head(5))
+
     if db_filename == "saudi_athletes.db":
         df = coerce_dtypes(df, SAUDI_COLUMNS_DTYPE)
     elif db_filename == "major_championships.db":
@@ -379,6 +384,7 @@ def show_final_chart_patch(df, label="Final Round Top 8"):
         scale=alt.Scale(domain=[y_min - y_padding, y_max + y_padding])
     )
     return df_valid, y_axis
+
 
 ###################################
 # 6) Athlete Expansions
