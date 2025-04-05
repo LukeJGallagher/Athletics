@@ -309,16 +309,6 @@ def parse_result(value, event):
 ###################################
 # 🩹 PATCH — fill missing athlete names with country for relays
 
-import os
-import re
-import sqlite3
-import pandas as pd
-import streamlit as st
-import altair as alt
-import numpy as np
-import base64
-import datetime
-
 # 🩹 PATCH — fill missing athlete names with country for relays
 
 def patch_fill_missing_athletes(df):
@@ -336,8 +326,12 @@ def safe_chart(df, event):
     if 'Result_numeric' not in df.columns or df['Result_numeric'].dropna().empty:
         st.warning(f"⚠️ No numeric results for {event}. Chart cannot be displayed.")
         return False
-    ymin = df['Result_numeric'].min()
-    ymax = df['Result_numeric'].max()
+    df_valid = df[df['Result_numeric'].notna()].copy()
+    if df_valid.empty:
+        st.warning(f"⚠️ All data for {event} has NaN Result_numeric. Chart cannot be rendered.")
+        return False
+    ymin = df_valid['Result_numeric'].min()
+    ymax = df_valid['Result_numeric'].max()
     if pd.isna(ymin) or pd.isna(ymax):
         st.warning(f"⚠️ Invalid data range for {event}: domain contains NaN.")
         return False
@@ -372,8 +366,9 @@ def show_final_chart_patch(df, label="Final Round Top 8"):
     df = patch_fill_missing_athletes(df)  # 🩹 re-apply patch just in case
     if not safe_chart(df, label):
         return None
-    y_min = df['Result_numeric'].min()
-    y_max = df['Result_numeric'].max()
+    df_valid = df[df['Result_numeric'].notna()].copy()
+    y_min = df_valid['Result_numeric'].min()
+    y_max = df_valid['Result_numeric'].max()
     y_padding = (y_max - y_min) * 0.1 if y_max > y_min else 1
     y_axis = alt.Y(
         'Result_numeric:Q',
