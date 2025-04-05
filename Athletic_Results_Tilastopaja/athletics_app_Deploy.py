@@ -307,7 +307,7 @@ def parse_result(value, event):
 ###################################
 # 5) DB Loader
 ###################################
-# 🩹 PATCH — fill missing athlete names with country for relays
+
 
 # 🩹 PATCH — fill missing athlete names with country for relays
 
@@ -321,21 +321,22 @@ def patch_fill_missing_athletes(df):
     return df
 
 # 🩹 PATCH — check before plotting Altair charts with NaN domain
+
 def safe_chart(df, event):
-    df = patch_fill_missing_athletes(df)  # 🩹 ensure patch is applied to chart data
+    df = patch_fill_missing_athletes(df)
     if 'Result_numeric' not in df.columns or df['Result_numeric'].dropna().empty:
         st.warning(f"⚠️ No numeric results for {event}. Chart cannot be displayed.")
-        return False
+        return None
     df_valid = df[df['Result_numeric'].notna()].copy()
     if df_valid.empty:
         st.warning(f"⚠️ All data for {event} has NaN Result_numeric. Chart cannot be rendered.")
-        return False
+        return None
     ymin = df_valid['Result_numeric'].min()
     ymax = df_valid['Result_numeric'].max()
     if pd.isna(ymin) or pd.isna(ymax):
         st.warning(f"⚠️ Invalid data range for {event}: domain contains NaN.")
-        return False
-    return True
+        return None
+    return df_valid
 
 @st.cache_data
 def load_db(db_filename: str):
@@ -357,16 +358,13 @@ def load_db(db_filename: str):
     if 'Year' not in df.columns and 'Start_Date' in df.columns:
         df['Year'] = df['Start_Date'].dt.year
 
-    # 🩹 Apply patch to fill athlete name if missing
     df = patch_fill_missing_athletes(df)
-
     return df
 
 def show_final_chart_patch(df, label="Final Round Top 8"):
-    df = patch_fill_missing_athletes(df)  # 🩹 re-apply patch just in case
-    if not safe_chart(df, label):
+    df_valid = safe_chart(df, label)
+    if df_valid is None:
         return None
-    df_valid = df[df['Result_numeric'].notna()].copy()
     y_min = df_valid['Result_numeric'].min()
     y_max = df_valid['Result_numeric'].max()
     y_padding = (y_max - y_min) * 0.1 if y_max > y_min else 1
@@ -376,6 +374,7 @@ def show_final_chart_patch(df, label="Final Round Top 8"):
         scale=alt.Scale(domain=[y_min - y_padding, y_max + y_padding])
     )
     return y_axis
+
 
 
 ###################################
