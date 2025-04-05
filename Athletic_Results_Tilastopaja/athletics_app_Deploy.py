@@ -307,6 +307,16 @@ def parse_result(value, event):
 ###################################
 # 5) DB Loader
 ###################################
+import os
+import re
+import sqlite3
+import pandas as pd
+import streamlit as st
+import altair as alt
+import numpy as np
+import base64
+import datetime
+
 # Enable debug mode from sidebar
 DEBUG_MODE = st.sidebar.checkbox("🔍 Enable Debug Mode", value=False)
 
@@ -384,6 +394,37 @@ def show_final_chart_patch(df, label="Final Round Top 8"):
         scale=alt.Scale(domain=[y_min - y_padding, y_max + y_padding])
     )
     return df_valid, y_axis
+
+# 📦 PATCH — improve robustness of time/distance parsing
+
+def parse_result(value, event):
+    if not isinstance(event, str) or not event.strip():
+        return None
+    event_clean = event.strip().replace("Indoor", "").strip()
+    e_type = event_type_map.get(event, event_type_map.get(event_clean, 'other'))
+    try:
+        if isinstance(value, str):
+            value = value.strip().upper()
+            value = re.sub(r"[^0-9:.]+", "", value)  # remove A, H, Q, etc
+        if not value or value in ['DNF', 'DNS', 'DQ', 'NM', '']: return None
+        if e_type == 'time':
+            if ':' in value:
+                parts = value.split(':')
+                if len(parts) == 2:
+                    m, s = parts
+                    return float(m) * 60 + float(s)
+                elif len(parts) == 3:
+                    h, m, s = parts
+                    return float(h) * 3600 + float(m) * 60 + float(s)
+            return float(value)
+        elif e_type in ['distance', 'points']:
+            return float(value)
+    except Exception as e:
+        if DEBUG_MODE:
+            st.write(f"❌ Failed to parse result '{value}' for event '{event}' → {e}")
+        return None
+    return None
+
 
 
 ###################################
