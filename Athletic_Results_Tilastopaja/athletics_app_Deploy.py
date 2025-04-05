@@ -307,7 +307,10 @@ def parse_result(value, event):
 ###################################
 # 5) DB Loader
 ###################################
-# 🩹 PATCH — fill missing athlete names with country for relays
+# Enable debug mode from sidebar
+DEBUG_MODE = st.sidebar.checkbox("🔍 Enable Debug Mode", value=False)
+
+# 🧹 PATCH — fill missing athlete names with country for relays
 
 def patch_fill_missing_athletes(df):
     if 'Athlete_Name' in df.columns and 'Athlete_Country' in df.columns:
@@ -318,23 +321,23 @@ def patch_fill_missing_athletes(df):
         df['Athlete_Name'] = df['Athlete_Name'].fillna(df['Athlete_Country'])
     return df
 
-# 🩹 PATCH — check before plotting Altair charts with NaN domain
+# 🧹 PATCH — check before plotting Altair charts with NaN domain
 
 def safe_chart(df, event):
     df = patch_fill_missing_athletes(df)
     if 'Result_numeric' not in df.columns or df['Result_numeric'].dropna().empty:
         st.warning(f"⚠️ No numeric results for {event}. Chart cannot be displayed.")
-        return None
+        return None, None
     df_valid = df[df['Result_numeric'].notna()].copy()
     if df_valid.empty:
         st.warning(f"⚠️ All data for {event} has NaN Result_numeric. Chart cannot be rendered.")
-        return None
+        return None, None
     ymin = df_valid['Result_numeric'].min()
     ymax = df_valid['Result_numeric'].max()
     if pd.isna(ymin) or pd.isna(ymax):
         st.warning(f"⚠️ Invalid data range for {event}: domain contains NaN.")
-        return None
-    return df_valid
+        return None, None
+    return df_valid, (ymin, ymax)
 
 @st.cache_data
 def load_db(db_filename: str):
@@ -360,11 +363,10 @@ def load_db(db_filename: str):
     return df
 
 def show_final_chart_patch(df, label="Final Round Top 8"):
-    df_valid = safe_chart(df, label)
-    if df_valid is None:
+    df_valid, domain = safe_chart(df, label)
+    if df_valid is None or domain is None:
         return None, None
-    y_min = df_valid['Result_numeric'].min()
-    y_max = df_valid['Result_numeric'].max()
+    y_min, y_max = domain
     y_padding = (y_max - y_min) * 0.1 if y_max > y_min else 1
     y_axis = alt.Y(
         'Result_numeric:Q',
@@ -655,7 +657,7 @@ def show_qualification_stage(df):
         })
 
     qualifier_stats = (
-        df_filtered.groupby(['Round', 'Year'], as_index=False)
+        df_filtered.groupby(['Round', 'Year'], as_index=False, group_keys=False)
         .apply(get_qualifier_stats)
         .reset_index(drop=True)
     )
@@ -733,6 +735,7 @@ def show_qualification_stage(df):
         st.dataframe(style_dark_df(ensure_json_safe(
             df_q[df_q['Top_2'] == 'Q'][['Athlete_Name', 'Athlete_Country', 'Event', 'Round', 'Heat', 'Result', 'Result_numeric']]
         )))
+
 
 ###################################
 # 9) Final Performances
