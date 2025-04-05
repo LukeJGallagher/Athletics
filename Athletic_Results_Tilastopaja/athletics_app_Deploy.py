@@ -307,6 +307,42 @@ def parse_result(value, event):
 ###################################
 # 5) DB Loader
 ###################################
+# 🩹 PATCH — fill missing athlete names with country for relays
+
+import os
+import re
+import sqlite3
+import pandas as pd
+import streamlit as st
+import altair as alt
+import numpy as np
+import base64
+import datetime
+
+# 🩹 PATCH — fill missing athlete names with country for relays
+
+def patch_fill_missing_athletes(df):
+    if 'Athlete_Name' in df.columns and 'Athlete_Country' in df.columns:
+        df['Athlete_Name'] = df['Athlete_Name'].fillna(df['Athlete_Country'])
+        df['Athlete_Name'] = df['Athlete_Name'].replace({
+            '': None, 'None': None, 'nan': None, np.nan: None
+        })
+        df['Athlete_Name'] = df['Athlete_Name'].fillna(df['Athlete_Country'])
+    return df
+
+# 🩹 PATCH — check before plotting Altair charts with NaN domain
+def safe_chart(df, event):
+    df = patch_fill_missing_athletes(df)  # 🩹 ensure patch is applied to chart data
+    if 'Result_numeric' not in df.columns or df['Result_numeric'].dropna().empty:
+        st.warning(f"⚠️ No numeric results for {event}. Chart cannot be displayed.")
+        return False
+    ymin = df['Result_numeric'].min()
+    ymax = df['Result_numeric'].max()
+    if pd.isna(ymin) or pd.isna(ymax):
+        st.warning(f"⚠️ Invalid data range for {event}: domain contains NaN.")
+        return False
+    return True
+
 @st.cache_data
 def load_db(db_filename: str):
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -326,7 +362,26 @@ def load_db(db_filename: str):
         df = coerce_dtypes(df, MAJOR_COLUMNS_DTYPE)
     if 'Year' not in df.columns and 'Start_Date' in df.columns:
         df['Year'] = df['Start_Date'].dt.year
+
+    # 🩹 Apply patch to fill athlete name if missing
+    df = patch_fill_missing_athletes(df)
+
     return df
+
+def show_final_chart_patch(df, label="Final Round Top 8"):
+    df = patch_fill_missing_athletes(df)  # 🩹 re-apply patch just in case
+    if not safe_chart(df, label):
+        return None
+    y_min = df['Result_numeric'].min()
+    y_max = df['Result_numeric'].max()
+    y_padding = (y_max - y_min) * 0.1 if y_max > y_min else 1
+    y_axis = alt.Y(
+        'Result_numeric:Q',
+        title='Performance',
+        scale=alt.Scale(domain=[y_min - y_padding, y_max + y_padding])
+    )
+    return y_axis
+
 
 ###################################
 # 6) Athlete Expansions
