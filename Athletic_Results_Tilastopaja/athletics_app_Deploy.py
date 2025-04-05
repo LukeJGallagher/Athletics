@@ -310,7 +310,7 @@ def parse_result(value, event):
 # Enable debug mode from sidebar
 DEBUG_MODE = st.sidebar.checkbox("🔍 Enable Debug Mode", value=False)
 
-# 🧹 PATCH — fill missing athlete names with country for relays
+# 🪟 PATCH — fill missing athlete names with country for relays
 
 def patch_fill_missing_athletes(df):
     if 'Athlete_Name' in df.columns and 'Athlete_Country' in df.columns:
@@ -321,7 +321,7 @@ def patch_fill_missing_athletes(df):
         df['Athlete_Name'] = df['Athlete_Name'].fillna(df['Athlete_Country'])
     return df
 
-# 🧹 PATCH — check before plotting Altair charts with NaN domain
+# 🪟 PATCH — check before plotting Altair charts with NaN domain
 
 def safe_chart(df, event):
     df = patch_fill_missing_athletes(df)
@@ -351,6 +351,8 @@ def load_db(db_filename: str):
     conn.close()
     df = clean_columns(df)
     if 'Result' in df.columns and 'Event' in df.columns:
+        if DEBUG_MODE:
+            st.write("✅ Parsing 'Result' column into 'Result_numeric'")
         df['Result_numeric'] = df.apply(lambda row: parse_result(row['Result'], row['Event']), axis=1)
     if db_filename == "saudi_athletes.db":
         df = coerce_dtypes(df, SAUDI_COLUMNS_DTYPE)
@@ -360,6 +362,9 @@ def load_db(db_filename: str):
         df['Year'] = df['Start_Date'].dt.year
 
     df = patch_fill_missing_athletes(df)
+    if DEBUG_MODE:
+        st.write("✅ Loaded DB:", db_filename)
+        st.write("➡️ Sample parsed results:", df[['Event', 'Result', 'Result_numeric']].dropna().head(5))
     return df
 
 def show_final_chart_patch(df, label="Final Round Top 8"):
@@ -374,7 +379,6 @@ def show_final_chart_patch(df, label="Final Round Top 8"):
         scale=alt.Scale(domain=[y_min - y_padding, y_max + y_padding])
     )
     return df_valid, y_axis
-
 
 ###################################
 # 6) Athlete Expansions
