@@ -8,7 +8,7 @@ Use SQL Converters to reduce file size and filter into SQL folder
 
 Database_Saudi_SQL2.py
 Database_Major_Champs2.py 
-Note: Neet to update Major2 championship dictionary
+Note: Need to update Major2 championship dictionary
 # Dictionary mapping competition names to their Competition_IDs
 competition_cids = {
     "Olympics 2021": "12992925",
