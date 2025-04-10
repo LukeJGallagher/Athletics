@@ -307,6 +307,16 @@ def parse_result(value, event):
 ###################################
 # 5) DB Loader
 ###################################
+import os
+import re
+import sqlite3
+import pandas as pd
+import streamlit as st
+import altair as alt
+import numpy as np
+import base64
+import datetime
+
 # Enable debug mode from sidebar
 DEBUG_MODE = st.sidebar.checkbox("🔍 Enable Debug Mode", value=False)
 
@@ -382,6 +392,12 @@ def show_final_chart_patch(df, label="Final Round Top 8"):
         return None, None
     df_valid['Label'] = df_valid.apply(get_chart_label, axis=1)
     y_min, y_max = domain
+
+    # 💡 Additional NaN check to prevent JSON errors
+    if pd.isna(y_min) or pd.isna(y_max):
+        st.warning(f"⚠️ Invalid y-axis domain for '{label}': [{y_min}, {y_max}]")
+        return None, None
+
     y_padding = (y_max - y_min) * 0.1 if y_max > y_min else 1
     y_axis = alt.Y(
         'Result_numeric:Q',
