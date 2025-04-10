@@ -307,29 +307,23 @@ def parse_result(value, event):
 ###################################
 # 5) DB Loader
 ###################################
-import os
-import re
-import sqlite3
-import pandas as pd
-import streamlit as st
-import altair as alt
-import numpy as np
-import base64
-import datetime
-
 # Enable debug mode from sidebar
 DEBUG_MODE = st.sidebar.checkbox("🔍 Enable Debug Mode", value=False)
 
 # 🪟 PATCH — fill missing athlete names with country for relays
 
 def patch_fill_missing_athletes(df):
-    if 'Athlete_Name' in df.columns and 'Athlete_Country' in df.columns:
-        df['Athlete_Name'] = df['Athlete_Name'].fillna(df['Athlete_Country'])
-        df['Athlete_Name'] = df['Athlete_Name'].replace({
-            '': None, 'None': None, 'nan': None, np.nan: None
-        })
-        df['Athlete_Name'] = df['Athlete_Name'].fillna(df['Athlete_Country'])
+    if 'Event' in df.columns and 'Athlete_Name' in df.columns and 'Athlete_Country' in df.columns:
+        is_relay = df['Event'].str.contains("Relay", na=False)
+        df.loc[is_relay & df['Athlete_Name'].isin(["", "None", "nan", np.nan]), 'Athlete_Name'] = df['Athlete_Country']
     return df
+
+# 📊 PATCH — assign chart label per athlete or relay team
+
+def get_chart_label(row):
+    if "Relay" in str(row.get("Event", "")):
+        return row.get("Athlete_Country", "Unknown Relay")
+    return row.get("Athlete_Name", "Unknown Athlete")
 
 # 🪟 PATCH — check before plotting Altair charts with NaN domain
 
@@ -386,6 +380,7 @@ def show_final_chart_patch(df, label="Final Round Top 8"):
     df_valid, domain = safe_chart(df, label)
     if df_valid is None or domain is None:
         return None, None
+    df_valid['Label'] = df_valid.apply(get_chart_label, axis=1)
     y_min, y_max = domain
     y_padding = (y_max - y_min) * 0.1 if y_max > y_min else 1
     y_axis = alt.Y(
