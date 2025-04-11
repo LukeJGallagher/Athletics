@@ -373,6 +373,11 @@ def load_db(db_filename: str):
             failed = df[df['Result_numeric'].isna() & df['Result'].notna()]
             st.write("⚠️ Failed to parse Result values (sample):", failed[['Event', 'Result']].head(5))
 
+            relay_missing = df[df['Event'].str.contains("Relay", na=False) & df['Result_numeric'].isna()]
+            if not relay_missing.empty:
+                st.write("⚠️ Unparsed relay results (check event names):")
+                st.dataframe(relay_missing[['Event', 'Result']].head(10))
+
     if db_filename == "saudi_athletes.db":
         df = coerce_dtypes(df, SAUDI_COLUMNS_DTYPE)
     elif db_filename == "major_championships.db":
@@ -411,13 +416,18 @@ def show_final_chart_patch(df, label="Final Round Top 8"):
 def parse_result(value, event):
     if not isinstance(event, str) or not event.strip():
         return None
-    event_clean = event.strip().replace("Indoor", "").strip()
-    e_type = event_type_map.get(event, event_type_map.get(event_clean, 'other'))
+
+    # Normalize event string for matching
+    event_clean = re.sub(r'\s+', '', event.strip().lower().replace("indoor", ""))
+    mapping = {re.sub(r'\s+', '', k.lower()): v for k, v in event_type_map.items()}
+    e_type = mapping.get(event_clean, 'other')
+
     try:
         if isinstance(value, str):
             value = value.strip().upper()
             value = re.sub(r"[^0-9:.]+", "", value)  # remove A, H, Q, etc
-        if not value or value in ['DNF', 'DNS', 'DQ', 'NM', '']: return None
+        if not value or value in ['DNF', 'DNS', 'DQ', 'NM', '']:
+            return None
         if e_type == 'time':
             if ':' in value:
                 parts = value.split(':')
@@ -434,6 +444,7 @@ def parse_result(value, event):
         if DEBUG_MODE:
             st.write(f"❌ Failed to parse result '{value}' for event '{event}' → {e}")
         return None
+
     return None
 
 
