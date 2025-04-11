@@ -307,21 +307,10 @@ def parse_result(value, event):
 ###################################
 # 5) DB Loader
 ###################################
-import os
-import re
-import sqlite3
-import pandas as pd
-import streamlit as st
-import altair as alt
-import numpy as np
-import base64
-import datetime
-
 # Enable debug mode from sidebar
 DEBUG_MODE = st.sidebar.checkbox("🔍 Enable Debug Mode", value=False)
 
 # 🪟 PATCH — fill missing athlete names with country for relays
-
 def patch_fill_missing_athletes(df):
     if 'Event' in df.columns and 'Athlete_Name' in df.columns and 'Athlete_Country' in df.columns:
         is_relay = df['Event'].str.contains("Relay", na=False)
@@ -329,14 +318,12 @@ def patch_fill_missing_athletes(df):
     return df
 
 # 📊 PATCH — assign chart label per athlete or relay team
-
 def get_chart_label(row):
     if "Relay" in str(row.get("Event", "")):
         return row.get("Athlete_Country", "Unknown Relay")
     return row.get("Athlete_Name", "Unknown Athlete")
 
 # 🪟 PATCH — check before plotting Altair charts with NaN domain
-
 def safe_chart(df, event):
     df = patch_fill_missing_athletes(df)
     if 'Result_numeric' not in df.columns or df['Result_numeric'].dropna().empty:
@@ -373,11 +360,6 @@ def load_db(db_filename: str):
             failed = df[df['Result_numeric'].isna() & df['Result'].notna()]
             st.write("⚠️ Failed to parse Result values (sample):", failed[['Event', 'Result']].head(5))
 
-            relay_missing = df[df['Event'].str.contains("Relay", na=False) & df['Result_numeric'].isna()]
-            if not relay_missing.empty:
-                st.write("⚠️ Unparsed relay results (check event names):")
-                st.dataframe(relay_missing[['Event', 'Result']].head(10))
-
     if db_filename == "saudi_athletes.db":
         df = coerce_dtypes(df, SAUDI_COLUMNS_DTYPE)
     elif db_filename == "major_championships.db":
@@ -391,33 +373,11 @@ def load_db(db_filename: str):
         st.write("➡️ Sample parsed results:", df[['Event', 'Result', 'Result_numeric']].dropna().head(5))
     return df
 
-def show_final_chart_patch(df, label="Final Round Top 8"):
-    df_valid, domain = safe_chart(df, label)
-    if df_valid is None or domain is None:
-        return None, None
-    df_valid['Label'] = df_valid.apply(get_chart_label, axis=1)
-    y_min, y_max = domain
-
-    # 💡 Additional NaN check to prevent JSON errors
-    if pd.isna(y_min) or pd.isna(y_max):
-        st.warning(f"⚠️ Invalid y-axis domain for '{label}': [{y_min}, {y_max}]")
-        return None, None
-
-    y_padding = (y_max - y_min) * 0.1 if y_max > y_min else 1
-    y_axis = alt.Y(
-        'Result_numeric:Q',
-        title='Performance',
-        scale=alt.Scale(domain=[y_min - y_padding, y_max + y_padding])
-    )
-    return df_valid, y_axis
-
 # 📦 PATCH — improve robustness of time/distance parsing
-
 def parse_result(value, event):
     if not isinstance(event, str) or not event.strip():
         return None
 
-    # Normalize event string for matching
     event_clean = re.sub(r'\s+', '', event.strip().lower().replace("indoor", ""))
     mapping = {re.sub(r'\s+', '', k.lower()): v for k, v in event_type_map.items()}
     e_type = mapping.get(event_clean, 'other')
@@ -425,7 +385,7 @@ def parse_result(value, event):
     try:
         if isinstance(value, str):
             value = value.strip().upper()
-            value = re.sub(r"[^0-9:.]+", "", value)  # remove A, H, Q, etc
+            value = re.sub(r"[^0-9:.]+", "", value)
         if not value or value in ['DNF', 'DNS', 'DQ', 'NM', '']:
             return None
         if e_type == 'time':
@@ -446,7 +406,6 @@ def parse_result(value, event):
         return None
 
     return None
-
 
 
 ###################################
@@ -1069,7 +1028,16 @@ def main():
                     show_final_performances(df_maj)
 
 
+# 🔍 Optional startup timing
+def main():
+    import time
+    start = time.time()
+    st.write("⏱️ App is starting...")
 
+    # Call your actual tab logic here
+    st.write("Replace this with your actual app tab rendering logic.")
+
+    st.write(f"✅ App finished loading in {time.time() - start:.2f} seconds.")
 
 if __name__ == "__main__":
   
