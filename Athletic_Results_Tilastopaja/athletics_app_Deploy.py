@@ -307,39 +307,6 @@ def parse_result(value, event):
 ###################################
 # 5) DB Loader
 ###################################
-# Enable debug mode from sidebar
-DEBUG_MODE = st.sidebar.checkbox("🔍 Enable Debug Mode", value=False)
-
-# 🪟 PATCH — fill missing athlete names with country for relays
-def patch_fill_missing_athletes(df):
-    if 'Event' in df.columns and 'Athlete_Name' in df.columns and 'Athlete_Country' in df.columns:
-        is_relay = df['Event'].str.contains("Relay", na=False)
-        df.loc[is_relay & df['Athlete_Name'].isin(["", "None", "nan", np.nan]), 'Athlete_Name'] = df['Athlete_Country']
-    return df
-
-# 📊 PATCH — assign chart label per athlete or relay team
-def get_chart_label(row):
-    if "Relay" in str(row.get("Event", "")):
-        return row.get("Athlete_Country", "Unknown Relay")
-    return row.get("Athlete_Name", "Unknown Athlete")
-
-# 🪟 PATCH — check before plotting Altair charts with NaN domain
-def safe_chart(df, event):
-    df = patch_fill_missing_athletes(df)
-    if 'Result_numeric' not in df.columns or df['Result_numeric'].dropna().empty:
-        st.warning(f"⚠️ No numeric results for {event}. Chart cannot be displayed.")
-        return None, None
-    df_valid = df[df['Result_numeric'].notna()].copy()
-    if df_valid.empty:
-        st.warning(f"⚠️ All data for {event} has NaN Result_numeric. Chart cannot be rendered.")
-        return None, None
-    ymin = df_valid['Result_numeric'].min()
-    ymax = df_valid['Result_numeric'].max()
-    if pd.isna(ymin) or pd.isna(ymax):
-        st.warning(f"⚠️ Invalid data range for {event}: domain contains NaN.")
-        return None, None
-    return df_valid, (ymin, ymax)
-
 @st.cache_data
 def load_db(db_filename: str):
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -352,61 +319,14 @@ def load_db(db_filename: str):
     conn.close()
     df = clean_columns(df)
     if 'Result' in df.columns and 'Event' in df.columns:
-        if DEBUG_MODE:
-            st.write("✅ Parsing 'Result' column into 'Result_numeric'")
         df['Result_numeric'] = df.apply(lambda row: parse_result(row['Result'], row['Event']), axis=1)
-
-        if DEBUG_MODE:
-            failed = df[df['Result_numeric'].isna() & df['Result'].notna()]
-            st.write("⚠️ Failed to parse Result values (sample):", failed[['Event', 'Result']].head(5))
-
     if db_filename == "saudi_athletes.db":
         df = coerce_dtypes(df, SAUDI_COLUMNS_DTYPE)
     elif db_filename == "major_championships.db":
         df = coerce_dtypes(df, MAJOR_COLUMNS_DTYPE)
     if 'Year' not in df.columns and 'Start_Date' in df.columns:
         df['Year'] = df['Start_Date'].dt.year
-
-    df = patch_fill_missing_athletes(df)
-    if DEBUG_MODE:
-        st.write("✅ Loaded DB:", db_filename)
-        st.write("➡️ Sample parsed results:", df[['Event', 'Result', 'Result_numeric']].dropna().head(5))
     return df
-
-# 📦 PATCH — improve robustness of time/distance parsing
-def parse_result(value, event):
-    if not isinstance(event, str) or not event.strip():
-        return None
-
-    event_clean = re.sub(r'\s+', '', event.strip().lower().replace("indoor", ""))
-    mapping = {re.sub(r'\s+', '', k.lower()): v for k, v in event_type_map.items()}
-    e_type = mapping.get(event_clean, 'other')
-
-    try:
-        if isinstance(value, str):
-            value = value.strip().upper()
-            value = re.sub(r"[^0-9:.]+", "", value)
-        if not value or value in ['DNF', 'DNS', 'DQ', 'NM', '']:
-            return None
-        if e_type == 'time':
-            if ':' in value:
-                parts = value.split(':')
-                if len(parts) == 2:
-                    m, s = parts
-                    return float(m) * 60 + float(s)
-                elif len(parts) == 3:
-                    h, m, s = parts
-                    return float(h) * 3600 + float(m) * 60 + float(s)
-            return float(value)
-        elif e_type in ['distance', 'points']:
-            return float(value)
-    except Exception as e:
-        if DEBUG_MODE:
-            st.write(f"❌ Failed to parse result '{value}' for event '{event}' → {e}")
-        return None
-
-    return None
-
 
 ###################################
 # 6) Athlete Expansions
@@ -624,23 +544,8 @@ def get_flag(country_code):
 
 def show_qualification_stage(df):
     st.subheader("Qualification Stage")
-    df = patch_fill_missing_athletes(df)
-
     df = df[df['Round'].notna()]
     df = df[~df['Round'].isin(["None", "", "nan", None])]
-
-    if DEBUG_MODE:
-        st.write("🔎 Debug — Raw df head:", df.head(5))
-
-    if 'Result_numeric' not in df.columns or df['Result_numeric'].dropna().empty:
-        st.warning("No valid numeric results available for qualification analysis.")
-        return
-
-    df = df[df['Result_numeric'].notna()].copy()
-
-    if DEBUG_MODE:
-        st.write("✅ Debug — Valid Result_numeric count:", df['Result_numeric'].notna().sum())
-
     round_clean_map = {
         "Preliminary round": "Prelims",
         "Preliminary": "Prelims",
@@ -655,119 +560,124 @@ def show_qualification_stage(df):
     df['Round'] = df['Round'].map(round_clean_map).fillna(df['Round'])
 
     if 'Athlete_Country' in df.columns:
+        df = df.copy()
         df['Country_Flag'] = df['Athlete_Country'].apply(get_flag)
         df['Athlete_Country'] = df['Country_Flag'] + ' ' + df['Athlete_Country']
 
-    def remove_outliers(d, field='Result_numeric'):
-        q1 = d[field].quantile(0.25)
-        q3 = d[field].quantile(0.75)
+    def remove_outliers(df, field='Result_numeric'):
+        q1 = df[field].quantile(0.25)
+        q3 = df[field].quantile(0.75)
         iqr = q3 - q1
         lower = q1 - 1.5 * iqr
         upper = q3 + 1.5 * iqr
-        return d[(d[field] >= lower) & (d[field] <= upper)]
+        return df[(df[field] >= lower) & (df[field] <= upper)]
 
-    df_filtered = remove_outliers(df)
+    if {'Round', 'Result_numeric', 'Year'}.issubset(df.columns):
+        df_filtered = df[df['Result_numeric'].notna()].copy()
+        df_filtered = remove_outliers(df_filtered)
 
-    if df_filtered.empty:
-        st.warning("All qualification results removed by outlier filtering.")
-        return
+        removed_outliers = df[~df.index.isin(df_filtered.index)]
+        if not removed_outliers.empty:
+            with st.expander("📛 Removed Outliers (IQR method)", expanded=False):
+                st.dataframe(style_dark_df(ensure_json_safe(
+                    removed_outliers[['Event', 'Round', 'Year', 'Result', 'Result_numeric']]
+                )))
 
-    round_year_stats = df_filtered.groupby(['Round', 'Year'], as_index=False).agg({
-        'Result_numeric': ['mean', 'min', 'max']
-    })
-    if round_year_stats.empty:
-        st.warning("No round/year stats available after filtering.")
-        return
-
-    round_year_stats.columns = ['Round', 'Year', 'Avg', 'Min', 'Max']
-
-    def get_qualifier_stats(subdf):
-        sorted_ = subdf.sort_values('Result_numeric').dropna(subset=['Result_numeric'])
-        return pd.Series({
-            'Fastest_Q': sorted_['Result_numeric'].iloc[1] if len(sorted_) > 1 else np.nan,
-            'Slowest_Q': sorted_['Result_numeric'].iloc[7] if len(sorted_) > 7 else np.nan
+        round_year_stats = df_filtered.groupby(['Round', 'Year'], as_index=False).agg({
+            'Result_numeric': ['mean', 'min', 'max']
         })
+        round_year_stats.columns = ['Round', 'Year', 'Avg', 'Min', 'Max']
 
-    qualifier_stats = (
-        df_filtered.groupby(['Round', 'Year'], as_index=False, group_keys=False)
-        .apply(get_qualifier_stats)
-        .reset_index(drop=True)
-    )
+        def get_qualifier_stats(subdf):
+            sorted_ = subdf.sort_values('Result_numeric').dropna(subset=['Result_numeric'])
+            fastest_q = sorted_['Result_numeric'].iloc[1] if len(sorted_) > 1 else np.nan
+            slowest_q = sorted_['Result_numeric'].iloc[7] if len(sorted_) > 7 else np.nan
+            return pd.Series({'Fastest_Q': fastest_q, 'Slowest_Q': slowest_q})
 
-    full_stats = pd.merge(round_year_stats, qualifier_stats, on=['Round', 'Year'], how='outer')
-    st.write("**Min / Avg / Max / Fastest Q / Slowest Q by Round & Year**")
-    st.dataframe(style_dark_df(ensure_json_safe(full_stats)))
+        qualifier_stats = (
+            df_filtered.groupby(['Round', 'Year'], as_index=False)
+            .apply(get_qualifier_stats)
+            .reset_index(drop=True)
+        )
 
-    melted = full_stats.melt(id_vars=['Round', 'Year'], var_name='Metric', value_name='Value')
-    melted = melted[melted['Value'].notna()]
-    if melted.empty:
-        st.warning("Chart skipped: All chart metrics are NaN after melt.")
+        full_stats = pd.merge(round_year_stats, qualifier_stats, on=['Round', 'Year'], how='outer')
+
+        st.write("**Min / Avg / Max / Fastest Q / Slowest Q by Round & Year**")
+        st.dataframe(style_dark_df(ensure_json_safe(full_stats)))
+
+        melted = full_stats.melt(id_vars=['Round', 'Year'], var_name='Metric', value_name='Value')
+        custom_order = ["Prelims", "Heats", "QF", "SF", "Final"]
+        melted['Round'] = pd.Categorical(melted['Round'], categories=custom_order, ordered=True)
+        qualifier_lines = ['Fastest_Q', 'Slowest_Q']
+        y_min = melted['Value'].min()
+        y_max = melted['Value'].max()
+        y_padding = (y_max - y_min) * 0.1 if y_max > y_min else 1
+        y_axis = alt.Y(
+            'Value:Q',
+            title='Performance',
+            scale=alt.Scale(domain=[y_min - y_padding, y_max + y_padding])
+        )
+        st.markdown("### Rounds Over Years (Min/Avg/Max + Qualifier Lines)")
+        chart = alt.Chart(melted).mark_line(
+            interpolate='monotone',
+            point=alt.OverlayMarkDef(filled=True, size=60)
+        ).encode(
+            x=alt.X('Year:O', title='Year'),
+            y=y_axis,
+            color=alt.Color('Round:N', sort=custom_order, scale=alt.Scale(scheme='dark2')),
+            strokeDash=alt.condition(
+                alt.FieldOneOfPredicate(field='Metric', oneOf=qualifier_lines),
+                alt.value([4, 4]),
+                alt.value([1])
+            ),
+            tooltip=['Year', 'Round', 'Metric', 'Value']
+        ).properties(
+            width=220,
+            height=250
+        ).facet(
+            facet='Metric:N',
+            columns=3
+        ).resolve_scale(
+            y='shared'
+        ).configure_axis(
+            labelColor='white',
+            titleColor='white',
+            labelFontSize=11,
+            titleFontSize=13,
+            gridColor='gray'
+        ).configure_view(
+            strokeWidth=0,
+            fill='black'
+        ).configure_title(
+            color='white',
+            fontSize=16
+        )
+        st.altair_chart(chart, use_container_width=True)
+    else:
+        st.info("Need 'Round', 'Result_numeric', 'Year' columns for progression chart.")
+        st.dataframe(style_dark_df(ensure_json_safe(df.head(10))))
         return
-
-    y_min = melted['Value'].min()
-    y_max = melted['Value'].max()
-    y_pad = (y_max - y_min) * 0.1 if y_max > y_min else 1
-
-    y_axis = alt.Y(
-        'Value:Q',
-        title='Performance',
-        scale=alt.Scale(domain=[y_min - y_pad, y_max + y_pad])
-    )
-
-    st.markdown("### Rounds Over Years (Min/Avg/Max + Qualifier Lines)")
-
-    chart = alt.Chart(melted).mark_line(
-        interpolate='monotone',
-        point=alt.OverlayMarkDef(filled=True, size=60)
-    ).encode(
-        x=alt.X('Year:O', title='Year'),
-        y=y_axis,
-        color=alt.Color('Round:N', scale=alt.Scale(scheme='dark2')),
-        strokeDash=alt.condition(
-            alt.FieldOneOfPredicate(field='Metric', oneOf=['Fastest_Q', 'Slowest_Q']),
-            alt.value([4, 4]),
-            alt.value([1])
-        ),
-        tooltip=['Year', 'Round', 'Metric', 'Value']
-    ).properties(
-        width=220,
-        height=250
-    ).facet(
-        facet='Metric:N',
-        columns=3
-    ).resolve_scale(y='shared')
-
-    chart = chart.configure_axis(
-        labelColor='white',
-        titleColor='white',
-        labelFontSize=11,
-        titleFontSize=13,
-        gridColor='gray'
-    ).configure_view(
-        strokeWidth=0,
-        fill='black'
-    ).configure_title(
-        color='white',
-        fontSize=16
-    )
-
-    st.altair_chart(chart, use_container_width=True)
-
-    # Expanded: Show top 2 qualifiers from each heat
-    if {'Event', 'Round', 'Heat', 'Result_numeric'}.issubset(df.columns):
-        st.markdown("### Inferred Top 2 from Heats/Semifinals")
-        df_q = df[df['Round'].isin(['Heats', 'QF', 'SF'])].copy()
-        df_q['Top_2'] = ''
+    st.markdown("### Inferred Qualification Flags (Top 2 from Heats)")
+    if {'Heat', 'Event', 'Result_numeric', 'Round'}.issubset(df.columns):
+        q_df = df[df['Round'].isin(['Heats', 'SF'])].copy()
+        q_df.loc[:, 'Qual'] = ""
         def mark_top_2(grp):
-            sorted_grp = grp.sort_values('Result_numeric')
-            if len(sorted_grp) >= 2:
-                sorted_grp.loc[sorted_grp.index[:2], 'Top_2'] = 'Q'
+            ev = grp['Event'].iloc[0]
+            ev_clean = ev.strip().replace("Indoor", "").strip()
+            ev_type = event_type_map.get(ev, event_type_map.get(ev_clean, 'time'))
+            ascending = ev_type == 'time'
+            sorted_grp = grp.sort_values('Result_numeric', ascending=ascending)
+            sorted_grp['Qual'] = ['Q' if i < 2 else '' for i in range(len(sorted_grp))]
             return sorted_grp
-        df_q = df_q.groupby(['Event', 'Round', 'Heat'], group_keys=False).apply(mark_top_2)
-        st.dataframe(style_dark_df(ensure_json_safe(
-            df_q[df_q['Top_2'] == 'Q'][['Athlete_Name', 'Athlete_Country', 'Event', 'Round', 'Heat', 'Result', 'Result_numeric']]
-        )))
-
+        top_2 = q_df.groupby(['Event', 'Round', 'Heat'], group_keys=False).apply(mark_top_2).reset_index(drop=True)
+        top2_mask = top_2['Qual'] == 'Q'
+        rest = top_2[~top2_mask]
+        lanes_needed = 8
+        fill_count = lanes_needed - top2_mask.sum()
+        fastest_fill = rest.sort_values('Result_numeric', ascending=True).head(fill_count)
+        top_2.loc[fastest_fill.index, 'Qual'] = 'q'
+        show_cols = ['Qual', 'Athlete_Name', 'Athlete_Country', 'Event', 'Round', 'Heat', 'Result', 'Result_numeric', 'Competition']
+        st.dataframe(style_dark_df(ensure_json_safe(top_2[[c for c in show_cols if c in top_2.columns]])))
 
 ###################################
 # 9) Final Performances
@@ -1028,16 +938,7 @@ def main():
                     show_final_performances(df_maj)
 
 
-# 🔍 Optional startup timing
-def main():
-    import time
-    start = time.time()
-    st.write("⏱️ App is starting...")
 
-    # Call your actual tab logic here
-    st.write("Replace this with your actual app tab rendering logic.")
-
-    st.write(f"✅ App finished loading in {time.time() - start:.2f} seconds.")
 
 if __name__ == "__main__":
   
