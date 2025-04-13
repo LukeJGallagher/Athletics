@@ -89,71 +89,6 @@ def set_background_from_url(url):
 
 set_background_from_url("https://raw.githubusercontent.com/LukeJGallagher/Athletics/main/Athletic_Results_Tilastopaja/Background2.PNG")
 
-###################################
-# 5) DB Loader
-###################################
-@st.cache_data
-def load_db(db_filename: str):
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    db_path = os.path.join(base_dir, "SQL", db_filename)
-    if not os.path.exists(db_path):
-        st.warning(f"{db_filename} not found in 'SQL' folder.")
-        return pd.DataFrame()
-    conn = sqlite3.connect(db_path)
-    df = pd.read_sql_query("SELECT * FROM athletics_data", conn)
-    conn.close()
-    df = clean_columns(df)
-    df = normalize_relay_events(df)
-
-    # Filter out rows where Event is missing
-    if "Event" in df.columns:
-        df = df[df["Event"].notnull()]
-    if 'Result' in df.columns and 'Event' in df.columns:
-        df['Result_numeric'] = df.apply(lambda row: parse_result(row['Result'], row['Event']), axis=1)
-    if db_filename == "saudi_athletes.db":
-        df = coerce_dtypes(df, SAUDI_COLUMNS_DTYPE)
-    elif db_filename == "major_championships.db":
-        df = coerce_dtypes(df, MAJOR_COLUMNS_DTYPE)
-    if 'Year' not in df.columns and 'Start_Date' in df.columns:
-        df['Year'] = df['Start_Date'].dt.year
-    return df
-
-
-conn = sqlite3.connect("SQL/major_championships.db")
-df_raw = pd.read_sql_query("SELECT Event FROM athletics_data", conn)
-conn.close()
-
-#st.write("🧪 RAW Event values from DB (sample):", df_raw["Event"].dropna().unique())
-
-
-
-
-# Load major DB and print debug info
-df_major = load_db("major_championships.db")
-df_major["Event_clean"] = df_major["Event"].str.strip().str.lower()
-relay_events_clean = ["4 x 100m", "4 x 400m", "4 x 400m mixed relay"]
-relay_rows = df_major[df_major["Event_clean"].isin(relay_events_clean)]
-#st.write("Relay events sample:", relay_rows[["Event", "Start_Date", "Year"]].head(10))
-#st.write("Unique Start_Date values:", df_major["Start_Date"].unique())
-#st.write("Unique Result values:", df_major["Result"].unique())
-#st.write("Unique Competition values:", df_major["Competition"].unique())
-#st.write("Unique Round values:", df_major["Round"].unique())
-#st.write("Cleaned Start_Date sample:", df_major["Start_Date"].head(10))
-#st.write("Cleaned Year sample:", df_major["Year"].head(10))
-#st.write("Result_numeric stats:", df_major["Result_numeric"].describe())
-#df = load_db("major_championships.db")
-#st.write("🚨 Blank or missing Events sample:", df[df["Event"].isnull() | (df["Event"].str.strip() == "")].head(10))
-#st.write("🧪 RAW Event values from DB (sample):", df_raw["Event"].dropna().unique())
-
-# 2. Assign country as Athlete_Name fallback for relays
-df_major['Athlete_Name'] = df_major.apply(
-    lambda row: row['Athlete_Name'] if pd.notna(row['Athlete_Name']) and row['Athlete_Name'].strip() != '' else row.get('Athlete_Country', 'Team'),
-    axis=1
-)
-
-
-
-
 
 
 
@@ -318,6 +253,71 @@ def normalize_relay_events(df):
         #st.write("📌 Relay Matches:", df[df['Event'].isin(relay_map.values())]['Event'].unique())
 
     return df
+
+
+###################################
+# 5) DB Loader
+###################################
+@st.cache_data
+def load_db(db_filename: str):
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    db_path = os.path.join(base_dir, "SQL", db_filename)
+    if not os.path.exists(db_path):
+        st.warning(f"{db_filename} not found in 'SQL' folder.")
+        return pd.DataFrame()
+    conn = sqlite3.connect(db_path)
+    df = pd.read_sql_query("SELECT * FROM athletics_data", conn)
+    conn.close()
+    df = clean_columns(df)
+    df = normalize_relay_events(df)
+
+    # Filter out rows where Event is missing
+    if "Event" in df.columns:
+        df = df[df["Event"].notnull()]
+    if 'Result' in df.columns and 'Event' in df.columns:
+        df['Result_numeric'] = df.apply(lambda row: parse_result(row['Result'], row['Event']), axis=1)
+    if db_filename == "saudi_athletes.db":
+        df = coerce_dtypes(df, SAUDI_COLUMNS_DTYPE)
+    elif db_filename == "major_championships.db":
+        df = coerce_dtypes(df, MAJOR_COLUMNS_DTYPE)
+    if 'Year' not in df.columns and 'Start_Date' in df.columns:
+        df['Year'] = df['Start_Date'].dt.year
+    return df
+
+
+conn = sqlite3.connect("SQL/major_championships.db")
+df_raw = pd.read_sql_query("SELECT Event FROM athletics_data", conn)
+conn.close()
+
+#st.write("🧪 RAW Event values from DB (sample):", df_raw["Event"].dropna().unique())
+
+
+
+
+# Load major DB and print debug info
+df_major = load_db("major_championships.db")
+df_major["Event_clean"] = df_major["Event"].str.strip().str.lower()
+relay_events_clean = ["4 x 100m", "4 x 400m", "4 x 400m mixed relay"]
+relay_rows = df_major[df_major["Event_clean"].isin(relay_events_clean)]
+#st.write("Relay events sample:", relay_rows[["Event", "Start_Date", "Year"]].head(10))
+#st.write("Unique Start_Date values:", df_major["Start_Date"].unique())
+#st.write("Unique Result values:", df_major["Result"].unique())
+#st.write("Unique Competition values:", df_major["Competition"].unique())
+#st.write("Unique Round values:", df_major["Round"].unique())
+#st.write("Cleaned Start_Date sample:", df_major["Start_Date"].head(10))
+#st.write("Cleaned Year sample:", df_major["Year"].head(10))
+#st.write("Result_numeric stats:", df_major["Result_numeric"].describe())
+#df = load_db("major_championships.db")
+#st.write("🚨 Blank or missing Events sample:", df[df["Event"].isnull() | (df["Event"].str.strip() == "")].head(10))
+#st.write("🧪 RAW Event values from DB (sample):", df_raw["Event"].dropna().unique())
+
+# 2. Assign country as Athlete_Name fallback for relays
+df_major['Athlete_Name'] = df_major.apply(
+    lambda row: row['Athlete_Name'] if pd.notna(row['Athlete_Name']) and row['Athlete_Name'].strip() != '' else row.get('Athlete_Country', 'Team'),
+    axis=1
+)
+
+
 
 
 
