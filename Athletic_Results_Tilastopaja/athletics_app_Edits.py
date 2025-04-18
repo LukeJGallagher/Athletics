@@ -377,9 +377,9 @@ def load_db(db_filename: str):
     return df
 
 
-conn = sqlite3.connect("SQL/major_championships.db")
-df_raw = pd.read_sql_query("SELECT Event FROM athletics_data", conn)
-conn.close()
+#conn = sqlite3.connect("SQL/major_championships.db")
+#df_raw = pd.read_sql_query("SELECT Event FROM athletics_data", conn)
+#conn.close()
 
 #st.write("🧪 RAW Event values from DB (sample):", df_raw["Event"].dropna().unique())
 
